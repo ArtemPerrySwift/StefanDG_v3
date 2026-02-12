@@ -1,6 +1,9 @@
 #include "FaceDGCalculator.h"
 #include "CoordinatesFunctions.h"
-void FaceDGCalculator::computeFlowMatrix(const uint8_t faceIndex, const double normalDerivatives[N_BASIS_VALUES], double flowMatrix[N_LOCAL_MATRIX_ELEMENTS])
+#include "Bases.h"
+
+template <class Basis>
+void FaceDGCalculator<Basis>::computeFlowMatrix(const uint8_t faceIndex, const double normalDerivatives[N_BASIS_VALUES], double flowMatrix[N_LOCAL_MATRIX_ELEMENTS])
 {
 	const double* iFunctionValues = _valuesByFace[faceIndex];
 	double* ijElement = flowMatrix;
@@ -18,57 +21,128 @@ void FaceDGCalculator::computeFlowMatrix(const uint8_t faceIndex, const double n
 	}
 }
 
-const double(*FaceDGCalculator::getValuesByFace())[N_BASIS_VALUES]
+template <class Basis>
+void FaceDGCalculator<Basis>::computeFlowVector(const double normalDerivatives[N_BASIS_VALUES], const double targetFunctionValues[NumericalIntegrationMethod::nSteps], double flowVector[Basis::N_FUNCTIONS])
+{
+	for (uint8_t i = 0; i < Basis::N_FUNCTIONS; ++i)
+	{
+		*flowVector = integrateFlowFunction(targetFunctionValues, normalDerivatives);
+		
+		normalDerivatives += NumericalIntegrationMethod::nSteps;
+		++flowVector;
+	}
+}
+
+template<class Basis>
+void FaceDGCalculator<Basis>::computeFlowVector(const double normalDerivatives[N_BASIS_VALUES], double flowVector[Basis::N_FUNCTIONS])
+{
+	for (uint8_t i = 0; i < Basis::N_FUNCTIONS; ++i)
+	{
+		*flowVector = integrateFlowFunction(normalDerivatives);
+
+		normalDerivatives += NumericalIntegrationMethod::nSteps;
+		++flowVector;
+	}
+}
+
+template <class Basis>
+void FaceDGCalculator<Basis>::computePowerVector(const uint8_t faceIndex, const double targetFunctionValues[NumericalIntegrationMethod::nSteps], double powerVector[Basis::N_FUNCTIONS])
+{
+	const double* faceValuesIt = _valuesByFace[faceIndex];
+	for (uint8_t i = 0; i < Basis::N_FUNCTIONS; ++i)
+	{
+		*powerVector = integratePowerFunction(faceValuesIt, targetFunctionValues);
+
+		faceValuesIt += NumericalIntegrationMethod::nSteps;
+		++powerVector;
+	}
+}
+
+template <class Basis>
+const double(*FaceDGCalculator<Basis>::getValuesByFace())[N_BASIS_VALUES]
 {
 	return _valuesByFace;
 }
 
-const LocalCoordinates3D(*FaceDGCalculator::getLocalgradientsByFace())[N_BASIS_VALUES]
+template <class Basis>
+const LocalCoordinates3D(*FaceDGCalculator<Basis>::getLocalGradientsByFace())[N_BASIS_VALUES]
 {
 	return _localGradientsByFace;
 }
 
-const double* const* FaceDGCalculator::getMassMatrixies()
+template <class Basis>
+const double* const* FaceDGCalculator<Basis>::getMassMatrixies()
 {
 	return _massMatrixByFace;
 }
 
-const double(*FaceDGCalculator::getCrossMassMatrixies())[constants::tetrahedron::N_FACES][N_LOCAL_MATRIX_ELEMENTS]
+template <class Basis>
+const double(*FaceDGCalculator<Basis>::getCrossMassMatrixies())[constants::tetrahedron::N_FACES][N_LOCAL_MATRIX_ELEMENTS]
 {
 	return _massCrossMatrixByFaces;
 }
 
-void FaceDGCalculator::init()
+template<class Basis>
+const double(*FaceDGCalculator<Basis>::getMassVectors())[Basis::N_FUNCTIONS]
+{
+	return _massVectorByFace;
+}
+
+template <class Basis>
+void FaceDGCalculator<Basis>::init()
 {
 	_massCrossMatrixByFaces = new double[constants::tetrahedron::N_FACES][constants::tetrahedron::N_FACES][N_LOCAL_MATRIX_ELEMENTS];
 	_massMatrixByFace = new double*[constants::tetrahedron::N_FACES];
 	_valuesByFace = new double[constants::tetrahedron::N_FACES][N_BASIS_VALUES];
 	_localGradientsByFace = new LocalCoordinates3D[constants::tetrahedron::N_FACES][N_BASIS_VALUES];
+	_massVectorByFace = new double[constants::tetrahedron::N_FACES][Basis::N_FUNCTIONS];
 
 	computeBasisDataByFace();
 	computeMassMatrixies();
+	computeMassVectors();
+
+	_initializationState = true;
 }
 
-void FaceDGCalculator::finalize()
+template <class Basis>
+void FaceDGCalculator<Basis>::finalize()
 {
 	delete[] _massCrossMatrixByFaces;
 	delete[] _massMatrixByFace;
 	delete[] _valuesByFace;
 	delete[] _localGradientsByFace;
+	delete[] _massVectorByFace;
 
 	_massCrossMatrixByFaces = nullptr;
 	_massMatrixByFace = nullptr;
 	_valuesByFace = nullptr;
 	_localGradientsByFace = nullptr;
+	_massVectorByFace = nullptr;
+
+	_initializationState;
 }
 
-double (*FaceDGCalculator::_massCrossMatrixByFaces)[constants::tetrahedron::N_FACES][N_LOCAL_MATRIX_ELEMENTS] = nullptr;
-double** FaceDGCalculator::_massMatrixByFace = nullptr;
+template <class Basis>
+bool FaceDGCalculator<Basis>::isInitialized()
+{
+	return _initializationState;
+}
 
-double (*FaceDGCalculator::_valuesByFace)[N_BASIS_VALUES] = nullptr;
-LocalCoordinates3D(*FaceDGCalculator::_localGradientsByFace)[N_BASIS_VALUES] = nullptr;
+template <class Basis>
+bool FaceDGCalculator<Basis>::_initializationState = false;
+template <class Basis>
+double (*FaceDGCalculator<Basis>::_massCrossMatrixByFaces)[constants::tetrahedron::N_FACES][N_LOCAL_MATRIX_ELEMENTS] = nullptr;
+template <class Basis>
+double** FaceDGCalculator<Basis>::_massMatrixByFace = nullptr;
+template <class Basis>
+double (*FaceDGCalculator<Basis>::_massVectorByFace)[Basis::N_FUNCTIONS] = nullptr;
+template <class Basis>
+double (*FaceDGCalculator<Basis>::_valuesByFace)[N_BASIS_VALUES] = nullptr;
+template <class Basis>
+LocalCoordinates3D(*FaceDGCalculator<Basis>::_localGradientsByFace)[N_BASIS_VALUES] = nullptr;
 
-void FaceDGCalculator::computeBasisDataByFace()
+template <class Basis>
+void FaceDGCalculator<Basis>::computeBasisDataByFace()
 {
 	LocalCoordinates3D localCoordinates3D[NumericalIntegrationMethod::nSteps];
 
@@ -90,7 +164,8 @@ void FaceDGCalculator::computeBasisDataByFace()
 
 }
 
-void FaceDGCalculator::computeMassMatrix(const double values[N_BASIS_VALUES], double massMatrix[N_LOCAL_MATRIX_ELEMENTS])
+template <class Basis>
+void FaceDGCalculator<Basis>::computeMassMatrix(const double values[N_BASIS_VALUES], double massMatrix[N_LOCAL_MATRIX_ELEMENTS])
 {
 	double* di = massMatrix;
 	const double* iFunctionValues = values;
@@ -115,7 +190,8 @@ void FaceDGCalculator::computeMassMatrix(const double values[N_BASIS_VALUES], do
 	}
 }
 
-void FaceDGCalculator::computeCrossMassMatrix(const double values1[N_BASIS_VALUES], const double values2[N_BASIS_VALUES], double crossMassMatrix1[N_LOCAL_MATRIX_ELEMENTS], double crossMassMatrix2[N_LOCAL_MATRIX_ELEMENTS])
+template <class Basis>
+void FaceDGCalculator<Basis>::computeCrossMassMatrix(const double values1[N_BASIS_VALUES], const double values2[N_BASIS_VALUES], double crossMassMatrix1[N_LOCAL_MATRIX_ELEMENTS], double crossMassMatrix2[N_LOCAL_MATRIX_ELEMENTS])
 {
 	const double* iFunctionValues = values1;
 	double* ijElementMatrix1 = crossMassMatrix1;
@@ -138,7 +214,8 @@ void FaceDGCalculator::computeCrossMassMatrix(const double values1[N_BASIS_VALUE
 	}
 }
 
-void FaceDGCalculator::computeMassMatrixies()
+template <class Basis>
+void FaceDGCalculator<Basis>::computeMassMatrixies()
 {
 	double** massMetrixIt = _massMatrixByFace;
 	double (*iiMassMatrixPtr)[N_LOCAL_MATRIX_ELEMENTS] = *_massCrossMatrixByFaces;
@@ -167,7 +244,35 @@ void FaceDGCalculator::computeMassMatrixies()
 	}
 }
 
-double FaceDGCalculator::integrateFlowFunction(const double* iBasisFunctionValueIt, const double* jBasisFunctionNormalDerivativeIt)
+template <class Basis>
+void FaceDGCalculator<Basis>::computeMassVector(const double* faceValueIt, double* massVectorElementIt)
+{
+	for (uint8_t i = 0; i < Basis::N_FUNCTIONS; ++i)
+	{
+		*massVectorElementIt = integrateMassFunction(faceValueIt);
+
+		faceValueIt += NumericalIntegrationMethod::nSteps;
+		++massVectorElementIt;
+	}
+}
+
+template <class Basis>
+void FaceDGCalculator<Basis>::computeMassVectors()
+{
+	double (*faceValuesIt)[N_BASIS_VALUES] = _valuesByFace;
+	double (*massVectorIt)[Basis::N_FUNCTIONS] = _massVectorByFace;
+
+	for (uint8_t i = 0; i < constants::tetrahedron::N_FACES; ++i)
+	{
+		computeMassVector(*faceValuesIt, *massVectorIt);
+
+		++faceValuesIt;
+		++massVectorIt;
+	}
+}
+
+template <class Basis>
+double FaceDGCalculator<Basis>::integrateFlowFunction(const double* iBasisFunctionValueIt, const double* jBasisFunctionNormalDerivativeIt)
 {
 	const double* weightsIt = NumericalIntegrationMethod::weights;
 	double sum = 0.0;
@@ -182,7 +287,23 @@ double FaceDGCalculator::integrateFlowFunction(const double* iBasisFunctionValue
 	return sum;
 }
 
-double FaceDGCalculator::integrateMassFunction(const double* iBasisFunctionValueIt, const double* jBasisFunctionValueIt)
+template<class Basis>
+double FaceDGCalculator<Basis>::integrateFlowFunction(const double* iBasisFunctionNormalDerivativeIt)
+{
+	const double* weightsIt = NumericalIntegrationMethod::weights;
+	double sum = 0.0;
+	for (uint8_t k = 0; k < NumericalIntegrationMethod::nSteps; ++k)
+	{
+		sum += (*weightsIt) * (*iBasisFunctionNormalDerivativeIt);
+		++weightsIt;
+		++iBasisFunctionNormalDerivativeIt;
+	}
+
+	return sum;
+}
+
+template <class Basis>
+double FaceDGCalculator<Basis>::integrateMassFunction(const double* iBasisFunctionValueIt, const double* jBasisFunctionValueIt)
 {
 	const double* weightsIt = NumericalIntegrationMethod::weights;
 	double sum = 0.0;
@@ -196,3 +317,38 @@ double FaceDGCalculator::integrateMassFunction(const double* iBasisFunctionValue
 
 	return sum;
 }
+
+template <class Basis>
+double FaceDGCalculator<Basis>::integrateMassFunction(const double* iBasisFunctionValueIt)
+{
+	const double* weightsIt = NumericalIntegrationMethod::weights;
+	double sum = 0.0;
+	for (uint8_t k = 0; k < NumericalIntegrationMethod::nSteps; ++k)
+	{
+		sum += (*weightsIt) * (*iBasisFunctionValueIt);
+		++weightsIt;
+		++iBasisFunctionValueIt;
+	}
+
+	return sum;
+}
+
+template <class Basis>
+double FaceDGCalculator<Basis>::integratePowerFunction(const double* iBasisFunctionValueIt, const double* targetFunctionValueIt)
+{
+	const double* weightsIt = NumericalIntegrationMethod::weights;
+	double sum = 0.0;
+	for (uint8_t k = 0; k < NumericalIntegrationMethod::nSteps; ++k)
+	{
+		sum += (*weightsIt) * (*iBasisFunctionValueIt) * (*targetFunctionValueIt);
+		++weightsIt;
+		++iBasisFunctionValueIt;
+	}
+
+	return sum;
+}
+
+
+#define X(BasisName) template class FaceDGCalculator<BasisName>;
+BASES
+#undef X;

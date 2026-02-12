@@ -1,0 +1,3 @@
+#pragma once
+
+enum class BoundaryCondition{DIRICHLET, NEWMAN, STEFAN, NONCONFORM, HOMOGENEOUS_NEWMAN, UNDEFINED};

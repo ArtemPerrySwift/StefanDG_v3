@@ -105,10 +105,13 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>C:\Users\kisli\Programs\gmsh-4.15.0-Windows64-sdk\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>C:\Users\kisli\Programs\gmsh-4.15.0-Windows64-sdk\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>gmsh.dll.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -128,23 +131,41 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="CoordinatesFunctions.cpp" />
+    <ClCompile Include="CrossTetrahedronsAdjusments.cpp" />
+    <ClCompile Include="DGStefanTask.cpp" />
+    <ClCompile Include="DTGeometryKernel.cpp" />
     <ClCompile Include="FaceDGCalculator.cpp" />
-    <ClCompile Include="GlobalCalculator.cpp" />
+    <ClCompile Include="ElementDGCalculator.cpp" />
+    <ClCompile Include="GMSHProxy.cpp" />
     <ClCompile Include="LinearLagrangeBasis.cpp" />
+    <ClCompile Include="LLt.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="MaterialPhase.cpp" />
     <ClCompile Include="NumericalIntegration.cpp" />
+    <ClCompile Include="TetrahedronsAdjusments.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Bases.h" />
+    <ClInclude Include="BoundariesConditions.h" />
     <ClInclude Include="Coordinates.h" />
     <ClInclude Include="CoordinatesFunctions.h" />
+    <ClInclude Include="CrossTetrahedronsAdjusments.h" />
+    <ClInclude Include="DGStefanTask.h" />
+    <ClInclude Include="DTGeometryKernel.h" />
     <ClInclude Include="FaceDGCalculator.h" />
     <ClInclude Include="GeometryConstants.h" />
-    <ClInclude Include="GlobalCalculator.h" />
+    <ClInclude Include="ElementDGCalculator.h" />
+    <ClInclude Include="GMSHProxy.h" />
+    <ClInclude Include="Interface.h" />
+    <ClInclude Include="InterfaceSideElements.h" />
     <ClInclude Include="LinearLagrangeBasis.h" />
+    <ClInclude Include="LLt.h" />
     <ClInclude Include="LocalCoordinates2D.h" />
     <ClInclude Include="LocalCoordinates3D.h" />
+    <ClInclude Include="MaterialPhase.h" />
     <ClInclude Include="NumericalIntegration.h" />
+    <ClInclude Include="TetrahedronsAdjusments.h" />
+    <ClInclude Include="Volume.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
