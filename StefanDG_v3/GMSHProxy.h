@@ -36,8 +36,8 @@ namespace GMSHProxy
         void getPhysicalGroups(int* &dimTags, size_t &nDimTags, const int dim = DEFAULT_DIM);
         void getPhysicalGroups(const int dim, int** tags, size_t* nTags);
         void getPhysicalName(const int dim, const int tag, char* &physicalName);
-        void getEntitiesForPhysicalGroup(const int dim, const int physicalTag, int** tags, size_t* nEntities);
-        void getEntities(int** dimTags, size_t* nEntities, const int dim = DEFAULT_DIM);
+        void getEntitiesForPhysicalGroup(const int dim, const int physicalTag, int* &tags, size_t &nEntities);
+        void getEntities(int* &dimTags, size_t &nEntities, const int dim = DEFAULT_DIM);
         void getEntities(const int dim, int** tags, size_t* nEntities);
         void getSurfaceUpEntities(const int surfaceTag, int*& upEntitiesTags, size_t& nUpEntities);
         void getPhysicalGroupsForEntity(const int dim, const int entityTag, int* &physicalTags, size_t &nPhysicalGroups);

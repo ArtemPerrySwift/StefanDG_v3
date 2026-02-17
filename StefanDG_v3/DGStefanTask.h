@@ -7,9 +7,15 @@
 #include "LinearLagrangeBasis.h"
 #include "BoundariesConditions.h"
 #include "DTGeometryKernel.h"
+#include "GMSHProxy.h"
 #include "Volume.h"
 #include "Interface.h"
 #include "InterfaceSideElements.h"
+#include "Solution.h"
+#include "Map.h"
+
+#include <stdexcept>
+
 
 class DGStefanTask
 {
@@ -21,7 +27,223 @@ public:
     static double newmanCondition(const Coordinates& point);
     static double initialConditionLiquid(const Coordinates &point);
     static double initialConditionSolid(const Coordinates& point);
+
+    void solve(const MaterialPhase* materialPhases,
+               const double stefanTemperature,
+               const double penalty,
+               const double tMin,
+               const double tMax,
+               const size_t tSteps,
+               Solution* solutionIt)
+    {
+        Volume* volumes;
+        unsigned int nVolumes;
+
+
+    }
+
 private:
+
+    void getMaterialPhasesTags(const MaterialPhase materialPhases[2], int materialPhaseTagIt[2])
+    {
+        int* physicalDimTags;
+        size_t nPhysicalDimTags;
+        GMSHProxy::model::getPhysicalGroups(constants::DIMENSION_3D, &physicalDimTags, &nPhysicalDimTags);
+
+        materialPhaseTagIt[0] = 0;
+        materialPhaseTagIt[1] = 0;
+
+        size_t nPhysicalGroups = nPhysicalDimTags / 2;
+        const int* physicalDimTagIt = physicalDimTags;
+        for (size_t i = 0; i < nPhysicalGroups; ++i)
+        {
+            char* physicalName;
+            ++physicalDimTagIt;
+            GMSHProxy::model::getPhysicalName(constants::DIMENSION_3D, *physicalDimTagIt, physicalName);
+
+            if (!strcmp(materialPhases[0].name, physicalName))
+            {
+                materialPhaseTagIt[0] = *physicalDimTagIt;
+            }
+            else
+            {
+                if (!strcmp(materialPhases[1].name, physicalName))
+                {
+                    materialPhaseTagIt[1] = *physicalDimTagIt;
+                }
+            }
+
+            ++physicalDimTagIt;
+            GMSHProxy::free(physicalName);
+        }
+    }
+
+    const MaterialPhase* getMaterialPhaseForVolume(const int tag, const MaterialPhase materialPhases[2], int materialPhasesTags[2])
+    {
+        int* entityPGsTags;
+        size_t nEntityPGsTags;
+        GMSHProxy::model::getPhysicalGroupsForEntity(constants::DIMENSION_3D, tag, entityPGsTags, nEntityPGsTags);
+
+        const int* entityPGsTagIt = entityPGsTags;
+        for (size_t j = 0; j < nEntityPGsTags; ++j)
+        {
+            if (materialPhasesTags[0] == *entityPGsTagIt)
+            {
+                return materialPhases;
+            }
+            else
+            {
+                if (materialPhasesTags[1] == *entityPGsTagIt)
+                {
+                    return materialPhases + 1;
+                }
+            }
+
+            ++entityPGsTagIt;
+        }
+
+        return nullptr;
+    }
+
+    void getVolumeBoundaries(const int tag, int* &boundariesTags, unsigned int &nBoundaries)
+    {
+        int* boundariesDimTags;
+        size_t nBoundariesDimTags;
+        GMSHProxy::model::getBoundaries(constants::DIMENSION_3D, tag, boundariesDimTags, nBoundariesDimTags);
+
+        nBoundaries = nBoundariesDimTags / 2;
+        boundariesTags = new int[nBoundaries];
+
+        int* boundaryDimTagIt = boundariesDimTags;
+        int* boundaryTagIt = boundariesTags;
+        for (unsigned int i = 0; i < nBoundaries; ++i)
+        {
+            ++boundaryDimTagIt;
+            *boundaryTagIt = *boundaryDimTagIt;
+
+            ++boundaryDimTagIt;
+            ++boundaryTagIt;
+        }
+    }
+
+    void getVolumes(const MaterialPhase materialPhases[2], Volume*& volumes, unsigned int& nVolumes)
+    {
+        int* volumesDimTags;
+        size_t nVolumeDimTags;
+        GMSHProxy::model::getEntities(volumesDimTags, nVolumeDimTags, constants::DIMENSION_3D);
+
+        nVolumes = nVolumeDimTags / 2;
+        volumes = new Volume[nVolumes];
+
+        int materialPhasesTags[2];
+        getMaterialPhasesTags(materialPhases, materialPhasesTags);
+
+        const int* volumesDimTagsIt = volumesDimTags;
+        Volume* volumeIt = volumes;
+        for (unsigned int i = 0; i < nVolumes; ++i)
+        {
+            ++volumesDimTagsIt;
+            volumeIt->tag = *volumesDimTagsIt;
+            volumeIt->materialPhasePtr = getMaterialPhaseForVolume(volumeIt->tag, materialPhases, materialPhasesTags);
+
+            int* boundariesTags;
+            getVolumeBoundaries(volumeIt->tag, boundariesTags, volumeIt->nBoundaries);
+            volumeIt->boundariesTags = boundariesTags;
+
+            BoundaryCondition* boundariesConditions = new BoundaryCondition[volumeIt->nBoundaries];
+            DTGeometryKernel::determineBoundaryConditions(volumeIt->boundariesTags, volumeIt->nBoundaries, boundariesConditions);
+            volumeIt->boundariesConditions = boundariesConditions;
+        }
+    }
+
+    unsigned int assignBoundariesTagsAndConditionTypes(const int* physicalDimTagIt,
+                                                       const unsigned int nPhysicalGroups,
+                                                       Map::MapElement<int, BoundaryCondition>* conditionTypeByBoundaryTag,
+                                                       const unsigned int nMaxSurfaces)
+    {
+        unsigned int nSurfaces = 0;
+        for (unsigned int i = 0; i < nPhysicalGroups; ++i)
+        {
+            ++physicalDimTagIt;
+
+            char* physicalName;
+            GMSHProxy::model::getPhysicalName(constants::DIMENSION_2D, *physicalDimTagIt, physicalName);
+            BoundaryCondition boundaryCondition;
+            switch (*physicalName)
+            {
+            case 'D':
+            {
+                boundaryCondition = BoundaryCondition::DIRICHLET;
+                break;
+            }
+            case 'N':
+            {
+                boundaryCondition = BoundaryCondition::NEWMAN;
+                break;
+            }
+            case 'C':
+            {
+                boundaryCondition = BoundaryCondition::NONCONFORM_INTERAFACE;
+                break;
+            }
+            default:
+            {
+                throw std::runtime_error("Unknown type of condition");
+            }
+            }
+            GMSHProxy::free(physicalName);
+
+            int* groupSurfacesTags;
+            size_t nGroupSurfacesTags;
+            GMSHProxy::model::getEntitiesForPhysicalGroup(constants::DIMENSION_2D, *physicalDimTagIt, groupSurfacesTags, nGroupSurfacesTags);
+
+            nSurfaces += nGroupSurfacesTags;
+
+            const int* groupSurfacesTagIt = groupSurfacesTags;
+            for (unsigned int j = 0; j < nGroupSurfacesTags; ++j)
+            {
+                Map::addElement<int, BoundaryCondition>(*groupSurfacesTagIt, boundaryCondition, conditionTypeByBoundaryTag, nMaxSurfaces);
+                ++groupSurfacesTagIt;
+            }
+
+            GMSHProxy::free(groupSurfacesTags);
+            ++physicalDimTagIt;
+        }
+
+        return nSurfaces;
+    }
+
+    void getInterafces(const Volume* volumes, const unsigned int nVolumes, Interface*& nonconformInterfaces, unsigned int& nInterafaces)
+    {
+        int* surfacesDimTags;
+        size_t nSurfacesDimTags;
+        GMSHProxy::model::getEntities(surfacesDimTags, nSurfacesDimTags, constants::DIMENSION_2D);
+
+        unsigned int nSurfaces = nSurfacesDimTags / 2;
+        int* physicalDimTags;
+        size_t nPhysicalDimTags;
+        GMSHProxy::model::getPhysicalGroups(physicalDimTags, nPhysicalDimTags, constants::DIMENSION_2D);
+        unsigned int nPhysicalGroups2D = nPhysicalDimTags / 2;
+
+        Map::MapElement<int, BoundaryCondition>* conditionTypeByBoundaryTag = new Map::MapElement<int, BoundaryCondition>[nSurfaces];
+
+        unsigned int nProcessedSurfaces = assignBoundariesTagsAndConditionTypes(physicalDimTags, nPhysicalGroups2D, conditionTypeByBoundaryTag, nSurfaces);
+
+        if (nProcessedSurfaces != nSurfaces)
+        {
+            const int* surfaceDimTagIt = surfacesDimTags;
+            for (unsigned int i = 0; i < nSurfaces; ++i)
+            {
+                ++surfaceDimTagIt;
+                const Map::MapElement<int, BoundaryCondition>* conditionTypeByBoundaryTagIt = Map::tryElementAdding<int, BoundaryCondition>(*surfaceDimTagIt, BoundaryCondition::HOMOGENEOUS_NEWMAN, conditionTypeByBoundaryTag, nSurfaces);
+            }
+        }
+        //std::unordered_map<int, BoundaryCondition> conditionTypeByBoundaryTag;
+        //conditionTypeByBoundaryTag.reserve(nSurfaces);
+
+        //std::pair<int, BoundaryCondition>* pairsTagCondition = new std::pair<int, BoundaryCondition>[nSurfaces];
+    }
+
     double* dblBuffer;
     int* intBuffer;
     Coordinates* coordinatesBuffer;
@@ -42,241 +264,8 @@ private:
     Interface* nonconformalInterfaces;
 	size_t nNonconformalInterfaces;
 
-    InterfaceSideElements* (*nonconformalInterfacesSidesElements)[2];
+    InterfaceSideElements* interfacesSidesElements;
 	CrossTetrahedronsAdjusments* nonconformalInterfacesFragmentsAdjusments;
-
-    void processVolume(const Volume &volume,
-                       const double dt,
-                       TetrahedronsAdjusments& elementsAdjusments,
-                       CrossTetrahedronsAdjusments& elementsCrossAdjuesments,
-                       double* &firstApproximatuion)
-    {
-        size_t* tetrahedronsTags;
-        size_t nTetrahedrons;
-
-        size_t(*tetrahedronsNodesTags)[constants::tetrahedron::N_NODES];
-        GMSHProxy::model::mesh::getTetrahedrons(tetrahedronsTags,
-            nTetrahedrons,
-            tetrahedronsNodesTags,
-            volume.tag);
-
-        elementsAdjusments.tetrahedronsTags = tetrahedronsTags;
-        elementsAdjusments.nTetrahedrons = nTetrahedrons;
-
-        double (*bilinearElementsAdjusments)[ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS] = new double[nTetrahedrons][ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS];
-        double (*linearElementsAdjusments)[Basis::N_FUNCTIONS] = new double[nTetrahedrons][Basis::N_FUNCTIONS];
-        double (*volumeInitialX)[Basis::N_FUNCTIONS] = new double[nTetrahedrons][Basis::N_FUNCTIONS];
-
-        elementsAdjusments.bilinear = (double*)bilinearElementsAdjusments;
-        elementsAdjusments.linear = (double*)linearElementsAdjusments;
-        firstApproximatuion = (double*)volumeInitialX;
-
-        double (*transpJacobianMatrixes)[Coordinates::COUNT * LocalCoordinates3D::COUNT];
-        double* determinants;
-        Coordinates* elementsInitPoints;
-
-        GMSHProxy::model::mesh::getTetrahedronJacobians(transpJacobianMatrixes, determinants, elementsInitPoints, nTetrahedrons, volume.tag);
-
-        double (*localJacobianMatrixes)[LocalCoordinates3D::COUNT * Coordinates::COUNT] = new double[nTetrahedrons][LocalCoordinates3D::COUNT * Coordinates::COUNT];
-        CoordinatesFunctions::computeLocalJacobianMatrixies(transpJacobianMatrixes, nTetrahedrons, determinants, localJacobianMatrixes);
-
-        computeTetrahedronsAdjusments(localJacobianMatrixes,
-            transpJacobianMatrixes,
-            determinants,
-            elementsInitPoints,
-            nTetrahedrons,
-            volume.materialPhasePtr->thermalConductivity,
-            volume.materialPhasePtr->heatCapacity * volume.materialPhasePtr->density,
-            dt,
-            volume.materialPhasePtr->state == MaterialPhase::LIQUID ? initialConditionLiquid : initialConditionSolid,
-            volumeInitialX,
-            bilinearElementsAdjusments,
-            linearElementsAdjusments);
-
-
-        int interiorFacesEntityTag;
-        int* boundariesFacesEntitiesTags = intBuffer;
-
-        size_t(*interiorFacesTetrahedronsIndexes)[2];
-        uint8_t(*interiorFacesLocalIndexes)[2];
-        size_t interiorFaces;
-
-        size_t** boundariesFacesTetrahedronsIndexes = (size_t**)ptrBuffer;
-        uint8_t** boundariesFacesLocalIndexes = (uint8_t**)(ptrBuffer + volume.nBoundaries);
-        size_t* nBoundariesFaces = sizesBuffer;
-
-        DTGeometryKernel::createVolumeFacesEntities(volume.tag,
-            volume.boundariesTags,
-            volume.nBoundaries,
-            volume.boundariesConditions,
-            interiorFacesEntityTag,
-            interiorFaces,
-            boundariesFacesEntitiesTags,
-            nBoundariesFaces,
-            interiorFacesTetrahedronsIndexes,
-            interiorFacesLocalIndexes,
-            boundariesFacesTetrahedronsIndexes,
-            boundariesFacesLocalIndexes);
-
-        elementsCrossAdjuesments.tetrahedronsIndexes = interiorFacesTetrahedronsIndexes;
-        elementsCrossAdjuesments.nCrossElements = interiorFaces;
-
-        double (*interiorFacesAdjusments)[ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS] = new double[interiorFaces][ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS];
-        elementsCrossAdjuesments.bilinear = (double*)interiorFacesAdjusments;
-
-        computeInteriorFacesAdjusments(interiorFacesEntityTag,
-                                       interiorFacesTetrahedronsIndexes,
-                                       interiorFacesLocalIndexes,
-                                       volume.materialPhasePtr->thermalConductivity,
-                                       localJacobianMatrixes,
-                                       bilinearElementsAdjusments,
-                                       interiorFacesAdjusments);
-
-        delete[] interiorFacesLocalIndexes;
-
-        const int* boundariesTagIt = volume.boundariesTags;
-        const int* boundaryFacesEntityTagIt = boundariesFacesEntitiesTags;
-
-        const size_t* const* boundaryFacesTetrahedronsIndexesIt = boundariesFacesTetrahedronsIndexes;
-        const uint8_t* const* boundaryFacesLocalIndexesIt = boundariesFacesLocalIndexes;
-
-        const BoundaryCondition* boundaryConditionIt = volume.boundariesConditions;
-
-        for (size_t j = 0; j < volume.nBoundaries; ++j)
-        {
-            switch (*boundaryConditionIt)
-            {
-            case BoundaryCondition::DIRICHLET:
-            {
-                char* surfaceType;
-                GMSHProxy::model::getSurafceType(*boundariesTagIt, surfaceType);
-
-                if (strcmp(surfaceType, "Plane"))
-                {
-                    computeDirichletFacesAdjusments(*boundaryFacesEntityTagIt,
-                                                    *boundaryFacesTetrahedronsIndexesIt,
-                                                    *boundaryFacesLocalIndexesIt,
-                                                    localJacobianMatrixes,
-                                                    dirichletCondition,
-                                                    volume.materialPhasePtr->thermalConductivity,
-                                                    bilinearElementsAdjusments,
-                                                    linearElementsAdjusments);
-                }
-                else
-                {
-                    size_t faceNodesIndexes[constants::tetrahedron::N_FACES * constants::triangle::N_NODES];
-                    DTGeometryKernel::extractFaceNodesTags(tetrahedronsNodesTags[**boundaryFacesTetrahedronsIndexesIt], **boundaryFacesLocalIndexesIt, faceNodesIndexes);
-
-                    Coordinates faceNodes[constants::triangle::N_NODES];
-                    GMSHProxy::model::mesh::get3Nodes(faceNodesIndexes, faceNodes);
-
-                    Coordinates normal;
-                    CoordinatesFunctions::computeNormal(faceNodes, normal);
-
-                    computeDirichletFacesAdjusments(*boundaryFacesEntityTagIt,
-                                                    *boundaryFacesTetrahedronsIndexesIt,
-                                                    *boundaryFacesLocalIndexesIt,
-                                                    normal,
-                                                    localJacobianMatrixes,
-                                                    dirichletCondition,
-                                                    volume.materialPhasePtr->thermalConductivity,
-                                                    bilinearElementsAdjusments,
-                                                    linearElementsAdjusments);
-
-                }
-
-                GMSHProxy::free(surfaceType);
-
-                break;
-
-            }
-
-            case BoundaryCondition::NEWMAN:
-            {
-                computeNewmanFacesAdjusments(*boundaryFacesEntityTagIt,
-                    *boundaryFacesTetrahedronsIndexesIt,
-                    *boundaryFacesLocalIndexesIt,
-                    newmanCondition,
-                    linearElementsAdjusments);
-                break;
-            }
-
-            case BoundaryCondition::NONCONFORM:
-            {
-                double (*boundaryTetrahedronsLocalJacobians)[LocalCoordinates3D::COUNT * Coordinates::COUNT] = new double[nBoundariesFaces[j]][LocalCoordinates3D::COUNT * Coordinates::COUNT];
-                Coordinates* boundaryTetrahedronsInitPoints = new Coordinates[nBoundariesFaces[j]];
-                DTGeometryKernel::extractBoundaryTetrahedrons(localJacobianMatrixes, elementsInitPoints, *boundaryFacesTetrahedronsIndexesIt, nBoundariesFaces[j], boundaryTetrahedronsLocalJacobians, boundaryTetrahedronsInitPoints);
-
-                InterfaceSideBuffer* interfaceSideBuffer;
-
-                auto intefaceIndexIt = interfaceIndexByPhysicalTag.find(boundariesConditionsTags[j]);
-                if (intefaceIndexIt == interfaceIndexByPhysicalTag.end())
-                {
-                    interfaceIndexByPhysicalTag.emplace(boundariesConditionsTags[j], interfaceIndex);
-
-                    interfaceSideBuffer = *volumesNonconformalInterfaceBoundaryIt;
-
-                    size_t faceNodesTags[constants::tetrahedron::N_FACES * constants::triangle::N_NODES];
-                    DTGeometryKernel::extractFaceNodesTags(tetrahedronsNodesTags[**boundaryFacesTetrahedronsIndexesIt], **boundaryFacesLocalIndexesIt, faceNodesTags);
-                    Coordinates faceNodes[constants::triangle::N_NODES];
-                    GMSHProxy::model::mesh::get3Nodes(faceNodesTags, faceNodes);
-                    CoordinatesFunctions::computeNormal(faceNodes, interfaceSideBuffer->normal);
-
-
-                    ++volumesNonconformalInterfaceBoundaryIt;
-                    ++nonconformalIntefaceSidesTagsIt;
-                    ++nonconformalIntefaceTetrahedronsIndexesIt;
-                    ++interfaceIndex;
-                }
-                else
-                {
-                    InterfaceSideBuffer* volumeInterfaceBoundaryOtherSide = volumesNonconformalInterfaceBoundaries[intefaceIndexIt->second];
-                    interfaceSideBuffer = volumeInterfaceBoundaryOtherSide;
-                    ++interfaceSideBuffer;
-
-                    nonconformalIntefacesVolumesIndexes[intefaceIndexIt->second][1] = i;
-                    nonconformalIntefacesSidesTags[intefaceIndexIt->second][1] = *boundariesTagIt;
-                    nonconformalIntefacesTetrahedronsIndexes[intefaceIndexIt->second][1] = *boundaryFacesTetrahedronsIndexesIt;
-
-                    interfaceSideBuffer->normal.x = -volumeInterfaceBoundaryOtherSide->normal.x;
-                    interfaceSideBuffer->normal.y = -volumeInterfaceBoundaryOtherSide->normal.y;
-                    interfaceSideBuffer->normal.z = -volumeInterfaceBoundaryOtherSide->normal.z;
-                }
-
-                interfaceSideBuffer->tetrahedronsLocalJacobians = boundaryTetrahedronsLocalJacobians;
-                interfaceSideBuffer->tetrahedronsInitPoints = boundaryTetrahedronsInitPoints;
-                interfaceSideBuffer->facesLocalIndexes = *boundaryFacesLocalIndexesIt;
-
-
-                computeVolumesInterafaceAdjusments(*boundariesTagIt,
-                    *boundaryFacesTetrahedronsIndexesIt,
-                    *boundaryFacesLocalIndexesIt,
-                    interfaceSideBuffer->normal,
-                    penaltyCoeff,
-                    volumeMaterialPhasePtr->thermalConductivity,
-                    localJacobianMatrixes,
-                    bilinearElementsAdjusments);
-
-                *boundaryFacesTetrahedronsIndexesIt = nullptr;
-                *boundaryFacesLocalIndexesIt = nullptr;
-
-                break;
-            }
-            }
-
-            delete[] * boundaryFacesTetrahedronsIndexesIt;
-            delete[] * boundaryFacesLocalIndexesIt;
-
-            ++boundaryConditionIt;
-            ++boundariesTagIt;
-            ++boundaryFacesEntityTagIt;
-            ++boundaryFacesTetrahedronsIndexesIt;
-            ++boundaryFacesLocalIndexesIt;
-
-        }
-
-        DTGeometryKernel::removeCreatedVolumeFacesEntities(boundariesFacesEntitiesTags, nBoundaries);
-    }
 
 
     void computeTetrahedronsAdjusments(const double (*localJacobianMatrixIt)[LocalCoordinates3D::COUNT * Coordinates::COUNT],
@@ -333,6 +322,9 @@ private:
                                       const uint8_t* boundaryFacesLocalIndexesIt,
                                       double(* const newmanCondition)(const Coordinates&),
                                       double linearTetrahedronsAdjusments[][Basis::N_FUNCTIONS]);
+
+
+    void processVolumes(const double dt);
 
 
 };

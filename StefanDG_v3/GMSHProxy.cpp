@@ -130,20 +130,20 @@ namespace GMSHProxy
             }
         }
 
-        void getEntitiesForPhysicalGroup(const int dim, const int physicalTag, int** entitiesTags, size_t* nEntities)
+        void getEntitiesForPhysicalGroup(const int dim, const int physicalTag, int* &entitiesTags, size_t &nEntities)
         {
             int ierr = 0;
-            gmshModelGetEntitiesForPhysicalGroup(dim, physicalTag, entitiesTags, nEntities, &ierr);
+            gmshModelGetEntitiesForPhysicalGroup(dim, physicalTag, &entitiesTags, &nEntities, &ierr);
             if (ierr)
             {
                 throwLastError();
             }
         }
 
-        void getEntities(int** dimTags, size_t* nDimTags, const int dim)
+        void getEntities(int* &dimTags, size_t &nDimTags, const int dim)
         {
             int ierr = 0;
-            gmshModelGetEntities(dimTags, nDimTags, dim, &ierr);
+            gmshModelGetEntities(&dimTags, &nDimTags, dim, &ierr);
             if (ierr)
             {
                 throwLastError();

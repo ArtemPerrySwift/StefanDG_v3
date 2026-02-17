@@ -47,6 +47,8 @@ namespace DTGeometryKernel
 
     void removeCreatedVolumeFacesEntities(const int* entitiesTagIt, const size_t nEntities);
 
+    void determineBoundaryConditions(const int* boundaryTagIt, const size_t nBoundaries, BoundaryCondition* conditionTypeIt);
+
     void determineBoundaryConditions(const int* boundaryTagIt, const size_t nBoundaries, int* conditionTagIt, char** conditionNameIt, BoundaryCondition* conditionTypeIt);
 
 

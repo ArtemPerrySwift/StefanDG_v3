@@ -705,7 +705,7 @@ namespace DTGeometryKernel
         {
             for (size_t i = 0; i < nBoundaries; ++i)
             {
-                if (*boundaryConditionIt != BoundaryCondition::HOMOGENEOUS_NEWMAN || *boundaryConditionIt != BoundaryCondition::NONCONFORM)
+                if (*boundaryConditionIt != BoundaryCondition::HOMOGENEOUS_NEWMAN || *boundaryConditionIt != BoundaryCondition::NONCONFORM_INTERAFACE)
                 {
                     *boundariesFacesEntitiesTagsIt = createFacesEntity(tetrahedronsFacesNodesTags, *boundariesFacesTetrahedronsIndexesIt, *boundariesFacesLocalIndexesIt, *nBoundariesFacesIt);
                 }
@@ -844,6 +844,74 @@ namespace DTGeometryKernel
             delete[] removingEntitiesDimTags;
         }
 
+        void determineBoundaryConditions(const int* boundaryTagIt, const size_t nBoundaries, BoundaryCondition* conditionTypeIt)
+        {
+            int ierr;
+            for (size_t i = 0; i < nBoundaries; ++i)
+            {
+                int* boundaryPhysicalTags;
+                size_t nBoundaryPhysicalTags;
+                gmshModelGetPhysicalGroupsForEntity(constants::DIMENSION_2D, *boundaryTagIt, &boundaryPhysicalTags, &nBoundaryPhysicalTags, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                if (nBoundaryPhysicalTags == 0)
+                {
+                    *conditionTypeIt = BoundaryCondition::HOMOGENEOUS_NEWMAN;
+
+                }
+                else
+                {
+                    char* conditionName;
+                    gmshModelGetPhysicalName(constants::DIMENSION_2D, *boundaryPhysicalTags, &conditionName, &ierr);
+                    if (ierr)
+                    {
+                        throwLastError();
+                    }
+
+                    if (conditionName == nullptr)
+                    {
+                        *conditionTypeIt = BoundaryCondition::UNDEFINED;
+                    }
+                    else
+                    {
+                        switch (*conditionName)
+                        {
+                        case 'D':
+                        {
+                            *conditionTypeIt = BoundaryCondition::DIRICHLET;
+                            break;
+                        }
+
+                        case 'N':
+                        {
+                            *conditionTypeIt = BoundaryCondition::NEWMAN;
+                            break;
+                        }
+
+                        case 'C':
+                        {
+                            *conditionTypeIt = BoundaryCondition::NONCONFORM_INTERAFACE;
+                            break;
+                        }
+                        default:
+                        {
+                            *conditionTypeIt = BoundaryCondition::UNDEFINED;
+                            break;
+                        }
+                        }
+                    }
+                    GMSHProxy::free(conditionName);
+                }
+                GMSHProxy::free(boundaryPhysicalTags);
+
+                ++boundaryTagIt;
+                ++conditionTypeIt;
+            }
+        }
+
         void determineBoundaryConditions(const int* boundaryTagIt, const size_t nBoundaries, int* conditionTagIt, char** conditionNameIt, BoundaryCondition* conditionTypeIt)
         {
             int ierr;
@@ -895,7 +963,7 @@ namespace DTGeometryKernel
 
                         case 'C':
                         {
-                            *conditionTypeIt = BoundaryCondition::NONCONFORM;
+                            *conditionTypeIt = BoundaryCondition::NONCONFORM_INTERAFACE;
                             break;
                         }
                         default:

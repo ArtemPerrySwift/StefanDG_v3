@@ -1,6 +1,23 @@
 #include "LinearLagrangeBasis.h"
 
 
+double LinearLagrangeBasis::compute(const LocalCoordinates3D& localPoint, const double* dofs)
+{
+	double startDOF = dofs[0];
+	double sum = startDOF;
+	sum += localPoint.u * (dofs[1] - startDOF);
+	sum += localPoint.v * (dofs[2] - startDOF);
+	sum += localPoint.w * (dofs[3] - startDOF);
+	return sum;
+}
+
+void LinearLagrangeBasis::compute(const LocalCoordinates3D& localPoint, const double* dofs, LocalCoordinates3D& localGradient)
+{
+	localGradient.u = -dofs[0] + dofs[1];
+	localGradient.v = -dofs[0] + dofs[2];
+	localGradient.w = -dofs[0] + dofs[3];
+}
+
 void LinearLagrangeBasis::compute(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, double* valueIt)
 {
 	valueIt = compute0Function(localPointIt, nPoints, valueIt);

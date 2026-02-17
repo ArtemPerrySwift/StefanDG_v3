@@ -575,3 +575,204 @@ void DGStefanTask::computeNewmanFacesAdjusments(const int boundaryFacesEntityTag
     delete[] newmanValues;
     delete[] integrationPoints;
 }
+
+
+void DGStefanTask::processVolumes(const double dt)
+{
+    const Volume* volumeIt = volumes;
+    TetrahedronsAdjusments* elementsAdjusmentsIt = volumesElementsAdjusments;
+    CrossTetrahedronsAdjusments* elementsCrossAdjuesmentsIt = volumesInteriorFacesAdjusments;
+    double** firstApproximationIt = volumesInitialX;
+    InterfaceSideElements* interfaceSideElementsIt = interfacesSidesElements;
+
+    for (size_t i = 0; i < nVolumes; ++i)
+    {
+        size_t* tetrahedronsTags;
+        size_t nTetrahedrons;
+
+        size_t(*tetrahedronsNodesTags)[constants::tetrahedron::N_NODES];
+        GMSHProxy::model::mesh::getTetrahedrons(tetrahedronsTags,
+            nTetrahedrons,
+            tetrahedronsNodesTags,
+            volumeIt->tag);
+
+        elementsAdjusmentsIt->tetrahedronsTags = tetrahedronsTags;
+        elementsAdjusmentsIt->nTetrahedrons = nTetrahedrons;
+
+        double (*bilinearElementsAdjusments)[ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS] = new double[nTetrahedrons][ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS];
+        double (*linearElementsAdjusments)[Basis::N_FUNCTIONS] = new double[nTetrahedrons][Basis::N_FUNCTIONS];
+        double (*volumeInitialX)[Basis::N_FUNCTIONS] = new double[nTetrahedrons][Basis::N_FUNCTIONS];
+
+        elementsAdjusmentsIt->bilinear = (double*)bilinearElementsAdjusments;
+        elementsAdjusmentsIt->linear = (double*)linearElementsAdjusments;
+        *firstApproximationIt = (double*)volumeInitialX;
+
+        double (*transpJacobianMatrixes)[Coordinates::COUNT * LocalCoordinates3D::COUNT];
+        double* determinants;
+        Coordinates* elementsInitPoints;
+
+        GMSHProxy::model::mesh::getTetrahedronJacobians(transpJacobianMatrixes, determinants, elementsInitPoints, nTetrahedrons, volumeIt->tag);
+
+        double (*localJacobianMatrixes)[LocalCoordinates3D::COUNT * Coordinates::COUNT] = new double[nTetrahedrons][LocalCoordinates3D::COUNT * Coordinates::COUNT];
+        CoordinatesFunctions::computeLocalJacobianMatrixies(transpJacobianMatrixes, nTetrahedrons, determinants, localJacobianMatrixes);
+
+        computeTetrahedronsAdjusments(localJacobianMatrixes,
+            transpJacobianMatrixes,
+            determinants,
+            elementsInitPoints,
+            nTetrahedrons,
+            volumeIt->materialPhasePtr->thermalConductivity,
+            volumeIt->materialPhasePtr->heatCapacity * volumeIt->materialPhasePtr->density,
+            dt,
+            volumeIt->materialPhasePtr->state == MaterialPhase::LIQUID ? initialConditionLiquid : initialConditionSolid,
+            volumeInitialX,
+            bilinearElementsAdjusments,
+            linearElementsAdjusments);
+
+
+        int interiorFacesEntityTag;
+        int* boundariesFacesEntitiesTags = intBuffer;
+
+        size_t(*interiorFacesTetrahedronsIndexes)[2];
+        uint8_t(*interiorFacesLocalIndexes)[2];
+        size_t interiorFaces;
+
+        size_t** boundariesFacesTetrahedronsIndexes = (size_t**)ptrBuffer;
+        uint8_t** boundariesFacesLocalIndexes = (uint8_t**)(ptrBuffer + volumeIt->nBoundaries);
+        size_t* nBoundariesFaces = sizesBuffer;
+
+        DTGeometryKernel::createVolumeFacesEntities(volumeIt->tag,
+            volumeIt->boundariesTags,
+            volumeIt->nBoundaries,
+            volumeIt->boundariesConditions,
+            interiorFacesEntityTag,
+            interiorFaces,
+            boundariesFacesEntitiesTags,
+            nBoundariesFaces,
+            interiorFacesTetrahedronsIndexes,
+            interiorFacesLocalIndexes,
+            boundariesFacesTetrahedronsIndexes,
+            boundariesFacesLocalIndexes);
+
+        elementsCrossAdjuesmentsIt->tetrahedronsIndexes = interiorFacesTetrahedronsIndexes;
+        elementsCrossAdjuesmentsIt->nCrossElements = interiorFaces;
+
+        double (*interiorFacesAdjusments)[ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS] = new double[interiorFaces][ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS];
+        elementsCrossAdjuesmentsIt->bilinear = (double*)interiorFacesAdjusments;
+
+        computeInteriorFacesAdjusments(interiorFacesEntityTag,
+            interiorFacesTetrahedronsIndexes,
+            interiorFacesLocalIndexes,
+            volumeIt->materialPhasePtr->thermalConductivity,
+            localJacobianMatrixes,
+            bilinearElementsAdjusments,
+            interiorFacesAdjusments);
+
+        delete[] interiorFacesLocalIndexes;
+
+        const int* boundariesTagIt = volumeIt->boundariesTags;
+        const int* boundaryFacesEntityTagIt = boundariesFacesEntitiesTags;
+
+        const size_t** boundaryFacesTetrahedronsIndexesIt = boundariesFacesTetrahedronsIndexes;
+        const uint8_t** boundaryFacesLocalIndexesIt = boundariesFacesLocalIndexes;
+
+        const BoundaryCondition* boundaryConditionIt = volumeIt->boundariesConditions;
+
+        for (size_t j = 0; j < volumeIt->nBoundaries; ++j)
+        {
+            switch (*boundaryConditionIt)
+            {
+            case BoundaryCondition::DIRICHLET:
+            {
+                char* surfaceType;
+                GMSHProxy::model::getSurafceType(*boundariesTagIt, surfaceType);
+
+                if (strcmp(surfaceType, "Plane"))
+                {
+                    computeDirichletFacesAdjusments(*boundaryFacesEntityTagIt,
+                        *boundaryFacesTetrahedronsIndexesIt,
+                        *boundaryFacesLocalIndexesIt,
+                        localJacobianMatrixes,
+                        dirichletCondition,
+                        volumeIt->materialPhasePtr->thermalConductivity,
+                        bilinearElementsAdjusments,
+                        linearElementsAdjusments);
+                }
+                else
+                {
+                    size_t faceNodesIndexes[constants::tetrahedron::N_FACES * constants::triangle::N_NODES];
+                    DTGeometryKernel::extractFaceNodesTags(tetrahedronsNodesTags[**boundaryFacesTetrahedronsIndexesIt], **boundaryFacesLocalIndexesIt, faceNodesIndexes);
+
+                    Coordinates faceNodes[constants::triangle::N_NODES];
+                    GMSHProxy::model::mesh::get3Nodes(faceNodesIndexes, faceNodes);
+
+                    Coordinates normal;
+                    CoordinatesFunctions::computeNormal(faceNodes, normal);
+
+                    computeDirichletFacesAdjusments(*boundaryFacesEntityTagIt,
+                        *boundaryFacesTetrahedronsIndexesIt,
+                        *boundaryFacesLocalIndexesIt,
+                        normal,
+                        localJacobianMatrixes,
+                        dirichletCondition,
+                        volumeIt->materialPhasePtr->thermalConductivity,
+                        bilinearElementsAdjusments,
+                        linearElementsAdjusments);
+
+                }
+
+                GMSHProxy::free(surfaceType);
+
+                break;
+
+            }
+
+            case BoundaryCondition::NEWMAN:
+            {
+                computeNewmanFacesAdjusments(*boundaryFacesEntityTagIt,
+                    *boundaryFacesTetrahedronsIndexesIt,
+                    *boundaryFacesLocalIndexesIt,
+                    newmanCondition,
+                    linearElementsAdjusments);
+                break;
+            }
+
+            case BoundaryCondition::NONCONFORM_INTERAFACE:
+            {
+                double (*boundaryTetrahedronsLocalJacobians)[LocalCoordinates3D::COUNT * Coordinates::COUNT] = new double[nBoundariesFaces[j]][LocalCoordinates3D::COUNT * Coordinates::COUNT];
+                Coordinates* boundaryTetrahedronsInitPoints = new Coordinates[nBoundariesFaces[j]];
+                DTGeometryKernel::extractBoundaryTetrahedrons(localJacobianMatrixes, elementsInitPoints, *boundaryFacesTetrahedronsIndexesIt, nBoundariesFaces[j], boundaryTetrahedronsLocalJacobians, boundaryTetrahedronsInitPoints);
+
+                interfaceSideElementsIt->indexes = *boundaryFacesTetrahedronsIndexesIt;
+                interfaceSideElementsIt->localJacobians = boundaryTetrahedronsLocalJacobians;
+                interfaceSideElementsIt->initPoints = boundaryTetrahedronsInitPoints;
+                interfaceSideElementsIt->facesLocalIndexes = *boundaryFacesLocalIndexesIt;
+
+                *boundaryFacesTetrahedronsIndexesIt = nullptr;
+                *boundaryFacesLocalIndexesIt = nullptr;
+
+                ++interfaceSideElementsIt;
+
+                break;
+            }
+            }
+
+            delete[] * boundaryFacesTetrahedronsIndexesIt;
+            delete[] * boundaryFacesLocalIndexesIt;
+
+            ++boundaryConditionIt;
+            ++boundariesTagIt;
+            ++boundaryFacesEntityTagIt;
+            ++boundaryFacesTetrahedronsIndexesIt;
+            ++boundaryFacesLocalIndexesIt;
+
+        }
+
+        DTGeometryKernel::removeCreatedVolumeFacesEntities(boundariesFacesEntitiesTags, volumeIt->nBoundaries);
+
+        ++volumeIt;
+        ++elementsAdjusmentsIt;
+        ++elementsCrossAdjuesmentsIt;
+        ++firstApproximationIt;
+    }
+}

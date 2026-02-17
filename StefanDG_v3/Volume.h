@@ -8,5 +8,5 @@ struct Volume
 	const MaterialPhase* materialPhasePtr;
 	const int* boundariesTags;
 	const BoundaryCondition* boundariesConditions;
-	size_t nBoundaries;
+	unsigned int nBoundaries;
 };
