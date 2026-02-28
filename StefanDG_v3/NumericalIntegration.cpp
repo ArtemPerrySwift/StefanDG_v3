@@ -83,13 +83,13 @@ namespace NumericalIntegration
 
 		void Gauss<2>::changeValuesOrder(double values[nSteps], const uint8_t nodesChangins[constants::triangle::N_NODES])
 		{
-			uint8_t bufferIndex = *nodesChangins;
-			double bufferValue = values[bufferIndex];
-			values[bufferIndex] = *values;
+			double outValues[constants::triangle::N_NODES];
 
-			bufferIndex = nodesChangins[bufferIndex];
-			values[0] = values[bufferIndex];
-			values[bufferIndex] = bufferValue;
+			changeValuesOrder(values, nodesChangins, outValues);
+
+			values[0] = outValues[0];
+			values[1] = outValues[1];
+			values[2] = outValues[2];
 		}
 
 		void Gauss<2>::changeValuesOrder(const double values[nSteps], const uint8_t nodesChangins[constants::triangle::N_NODES], double outValues[nSteps])
