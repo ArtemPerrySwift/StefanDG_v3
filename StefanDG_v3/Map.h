@@ -3,37 +3,37 @@
 
 namespace Map
 {
-	template<typename TagType, class ElementType>
-	struct MapElement
+	template<typename TagType, class ValueType>
+	struct Element
 	{
 		TagType tag;
-		ElementType elem;
-		MapElement* next;
+		ValueType value;
+		Element* next;
 
-		MapElement(const TagType tag, const ElementType elem) : tag{ tag }, next{ nullptr }, elem(elem)
+		Element(const TagType tag, const ValueType value) : tag{ tag }, next{ nullptr }, value(value)
 		{
 		}
 
-		MapElement() : tag{ 0 }, next{nullptr}, elem()
+		Element() : tag{ 0 }, next{nullptr}, value()
 		{
 		}
 
-		~MapElement()
+		~Element()
 		{
 			delete next;
 		}
 	};
 
-	template<typename TagType, class ElementType>
-	void addElement(const TagType tag, const ElementType element, MapElement<TagType, ElementType> map[], const TagType n)
+	template<typename TagType, class ValueType>
+	void addElement(const TagType tag, const ValueType element, Element<TagType, ValueType> map[], const TagType n)
 	{
 		const TagType index = tag % n;
-		MapElement<TagType, ElementType>*  mapElement = map + index;
+		Element<TagType, ValueType>*  mapElement = map + index;
 
 		if (mapElement->tag == 0)
 		{
 			mapElement->tag = tag;
-			mapElement->elem = element;
+			mapElement->value = element;
 
 			return;
 		}
@@ -43,19 +43,19 @@ namespace Map
 			mapElement = mapElement->next;
 		}
 
-		mapElement->next = new MapElement<TagType, ElementType>(tag, element);
+		mapElement->next = new Element<TagType, ValueType>(tag, element);
 	}
 
-	template<typename TagType, class ElementType>
-	const MapElement<TagType, ElementType>* tryElementAdding(const TagType tag, const ElementType element, MapElement<TagType, ElementType> map[], const TagType n)
+	template<typename TagType, class ValueType>
+	const Element<TagType, ValueType>* tryElementAdding(const TagType tag, const ValueType element, Element<TagType, ValueType> map[], const TagType n)
 	{
 		const TagType index = tag % n;
-		MapElement<TagType, ElementType>* mapElement = map + index;
+		Element<TagType, ValueType>* mapElement = map + index;
 
 		if (mapElement->tag == 0)
 		{
 			mapElement->tag = tag;
-			mapElement->elem = element;
+			mapElement->value = element;
 			return mapElement;
 		}
 		
@@ -68,15 +68,15 @@ namespace Map
 			mapElement = mapElement->next;
 		}
 
-		mapElement->next = new MapElement<TagType, ElementType>(tag, element);
+		mapElement->next = new Element<TagType, ValueType>(tag, element);
 		return mapElement->next;
 	}
 
-	template<typename TagType, class ElementType>
-	ElementType& getElement(const TagType tag, MapElement<TagType, ElementType> map[], const TagType n)
+	template<typename TagType, class ValueType>
+	ValueType& getElement(const TagType tag, Element<TagType, ValueType> map[], const TagType n)
 	{
 		const TagType index = tag % n;
-		MapElement<TagType, ElementType>* mapElement = map + index;
+		Element<TagType, ValueType>* mapElement = map + index;
 
 		if (mapElement->tag != tag)
 		{
@@ -84,7 +84,7 @@ namespace Map
 			{
 				if (mapElement->tag == tag)
 				{
-					return mapElement->elem;
+					return mapElement->value;
 				}
 
 				mapElement = mapElement->next;
@@ -95,10 +95,18 @@ namespace Map
 				throw std::runtime_error("There is no element in map with such tag");
 			}
 		}
-		return mapElement->elem;
+		return mapElement->value;
 	}
 
-
+	template<typename TagType, class ValueType>
+	ValueType& getExistedValue(const TagType tag, const Element<TagType, ValueType>* element)
+	{
+		while (element->tag != tag)
+		{
+			element = element->next;
+		}
+		return element->value;
+	}
 }
 
 

@@ -5,42 +5,83 @@
 #include "ElementDGCalculator.h"
 #include "FaceDGCalculator.h"
 #include "LinearLagrangeBasis.h"
-#include "BoundariesConditions.h"
+//#include "BoundariesConditions.h"
 #include "DTGeometryKernel.h"
 #include "GMSHProxy.h"
 #include "Volume.h"
 #include "Interface.h"
+#include "NonconformInterface.h"
 #include "InterfaceSideElements.h"
 #include "Solution.h"
 #include "Map.h"
 
 #include <stdexcept>
+#include <cinttypes>
 
+using Basis = LinearLagrangeBasis;
 
 class DGStefanTask
 {
 public:
-
-    using Basis = LinearLagrangeBasis;
-
     static double dirichletCondition(const Coordinates& point);
     static double newmanCondition(const Coordinates& point);
     static double initialConditionLiquid(const Coordinates &point);
     static double initialConditionSolid(const Coordinates& point);
+
+    static void computeDirichletCondition(const Coordinates* pointIt, const uint8_t nPoints, double* valueIt);
+    static void computeNewmanCondition(const Coordinates* pointIt, const uint8_t nPoints, double* valueIt);
+    static void computeLiquidTemperature(const Coordinates* pointIt, const uint8_t nPoints, double* valueIt);
+    static void computeSolidTemperature(const Coordinates* pointIt, const uint8_t nPoints, double* valueIt);
 
     void solve(const MaterialPhase* materialPhases,
                const double stefanTemperature,
                const double penalty,
                const double tMin,
                const double tMax,
-               const size_t tSteps,
+               const size_t nTSteps,
                Solution* solutionIt)
     {
         Volume* volumes;
-        unsigned int nVolumes;
+        NonconformInterface* nonconformInterfaces;
+        unsigned int nVolumes, nNonconformInterafaces;
+
+        getModel(materialPhases, volumes, nVolumes, nonconformInterfaces, nNonconformInterafaces);
+
+        ElementsAdjusmentsSet* volumesElementsAdjusmentsSets = new ElementsAdjusmentsSet[nVolumes];
+        CrossElementsAdjusmentsSet* volumesElementsCrossAdjuesmentsSets = new CrossElementsAdjusmentsSet[nVolumes];
+        CrossElementsAdjusmentsSet* nonconformInterfacesAdjuesmentsSets = new CrossElementsAdjusmentsSet[nNonconformInterafaces];
+
+        double** firstApproximationIt = new double*[nVolumes];
+        InterfaceSideElementsSet(*nonconformalInterfaceSideElementsSets)[2] = new InterfaceSideElementsSet[nNonconformInterafaces][2];
+
+        const size_t nTIntervals = nTSteps - 1;
+        double dt = (tMax - tMin) / nTIntervals;
+
+        const Volume* volumeIt = volumes;
+        ElementsAdjusmentsSet* elementsAdjusmentsIt = volumesElementsAdjusments;
+        CrossElementsAdjusmentsSet* elementsCrossAdjuesmentsIt = volumesInteriorFacesAdjusments;
+        double** firstApproximationIt = volumesInitialX;
+        InterfaceSideElementsSet* interfaceSideElementsIt = interfacesSidesElements;
+        for (unsigned int i = 0; i < nNonconformInterafaces; ++i)
+        {
+
+        }
+
+        for (size_t i = 1; i < nTIntervals; ++i)
+        {
+
+        }
 
 
+        delete[] volumes;
+        delete[] nonconformInterfaces;
+        delete[] volumesElementsAdjusmentsSets;
+        delete[] volumesElementsCrossAdjuesmentsSets;
+        delete[] nonconformInterfacesAdjuesmentsSets;
+        delete[] firstApproximationIt;
+        delete[] nonconformalInterfaceSideElementsSets;
     }
+
 
 private:
 
@@ -78,112 +119,98 @@ private:
         }
     }
 
-    const MaterialPhase* getMaterialPhaseForVolume(const int tag, const MaterialPhase materialPhases[2], int materialPhasesTags[2])
-    {
-        int* entityPGsTags;
-        size_t nEntityPGsTags;
-        GMSHProxy::model::getPhysicalGroupsForEntity(constants::DIMENSION_3D, tag, entityPGsTags, nEntityPGsTags);
 
-        const int* entityPGsTagIt = entityPGsTags;
-        for (size_t j = 0; j < nEntityPGsTags; ++j)
+    void assignBoundaryConditionToGroupSurfaces(const int* surfacesTagIt,
+                                                const unsigned int nSurfaces,
+                                                const Boundary::Condition boundaryCondition,
+                                                Map::Element<int, Boundary::Condition>* conditionTypeByBoundaryTag,
+                                                const unsigned int nMaxSurfaces)
+    {
+        for (unsigned int j = 0; j < nSurfaces; ++j)
         {
-            if (materialPhasesTags[0] == *entityPGsTagIt)
+            const unsigned int hashIndex = *surfacesTagIt % nMaxSurfaces;
+            Map::Element<int, Boundary::Condition>* mapElement = conditionTypeByBoundaryTag + hashIndex;
+
+            if (mapElement->tag == 0)
             {
-                return materialPhases;
+                mapElement->tag = *surfacesTagIt;
+                mapElement->value = boundaryCondition;
+
+                return;
             }
             else
             {
-                if (materialPhasesTags[1] == *entityPGsTagIt)
+                while (mapElement->next != nullptr)
                 {
-                    return materialPhases + 1;
+                    mapElement = mapElement->next;
                 }
+
+                mapElement->next = new Map::Element<int, Boundary::Condition>(*surfacesTagIt, boundaryCondition);
             }
 
-            ++entityPGsTagIt;
+            ++surfacesTagIt;
         }
-
-        return nullptr;
     }
-
-    void getVolumeBoundaries(const int tag, int* &boundariesTags, unsigned int &nBoundaries)
+    unsigned int getConditionIndex(char strIndex[])
     {
-        int* boundariesDimTags;
-        size_t nBoundariesDimTags;
-        GMSHProxy::model::getBoundaries(constants::DIMENSION_3D, tag, boundariesDimTags, nBoundariesDimTags);
-
-        nBoundaries = nBoundariesDimTags / 2;
-        boundariesTags = new int[nBoundaries];
-
-        int* boundaryDimTagIt = boundariesDimTags;
-        int* boundaryTagIt = boundariesTags;
-        for (unsigned int i = 0; i < nBoundaries; ++i)
+        if (*strIndex == '\0')
         {
-            ++boundaryDimTagIt;
-            *boundaryTagIt = *boundaryDimTagIt;
-
-            ++boundaryDimTagIt;
-            ++boundaryTagIt;
+            return 0;
         }
+
+        unsigned int index;
+        sscanf(strIndex, "%u", &index);
+        return index;
     }
 
-    void getVolumes(const MaterialPhase materialPhases[2], Volume*& volumes, unsigned int& nVolumes)
+    unsigned int determineExplicitBoundariesConditions(Map::Element<int, Boundary::Condition>* conditionTypeByBoundaryTag,
+                                                       const unsigned int nSurfaces,
+                                                       unsigned int &nNonconformalGroups)
     {
-        int* volumesDimTags;
-        size_t nVolumeDimTags;
-        GMSHProxy::model::getEntities(volumesDimTags, nVolumeDimTags, constants::DIMENSION_3D);
+        int* physicalDimTags;
+        unsigned int nPhysicalGroups;
+        GMSHProxy::model::getPhysicalGroups(physicalDimTags, nPhysicalGroups, constants::DIMENSION_2D);
 
-        nVolumes = nVolumeDimTags / 2;
-        volumes = new Volume[nVolumes];
-
-        int materialPhasesTags[2];
-        getMaterialPhasesTags(materialPhases, materialPhasesTags);
-
-        const int* volumesDimTagsIt = volumesDimTags;
-        Volume* volumeIt = volumes;
-        for (unsigned int i = 0; i < nVolumes; ++i)
-        {
-            ++volumesDimTagsIt;
-            volumeIt->tag = *volumesDimTagsIt;
-            volumeIt->materialPhasePtr = getMaterialPhaseForVolume(volumeIt->tag, materialPhases, materialPhasesTags);
-
-            int* boundariesTags;
-            getVolumeBoundaries(volumeIt->tag, boundariesTags, volumeIt->nBoundaries);
-            volumeIt->boundariesTags = boundariesTags;
-
-            BoundaryCondition* boundariesConditions = new BoundaryCondition[volumeIt->nBoundaries];
-            DTGeometryKernel::determineBoundaryConditions(volumeIt->boundariesTags, volumeIt->nBoundaries, boundariesConditions);
-            volumeIt->boundariesConditions = boundariesConditions;
-        }
-    }
-
-    unsigned int assignBoundariesTagsAndConditionTypes(const int* physicalDimTagIt,
-                                                       const unsigned int nPhysicalGroups,
-                                                       Map::MapElement<int, BoundaryCondition>* conditionTypeByBoundaryTag,
-                                                       const unsigned int nMaxSurfaces)
-    {
-        unsigned int nSurfaces = 0;
+        nNonconformalGroups = 0;
+        unsigned int nProcessedSurfaces = 0;
+        const int* physicalDimTagIt = physicalDimTags;
         for (unsigned int i = 0; i < nPhysicalGroups; ++i)
         {
             ++physicalDimTagIt;
 
+            int* groupSurfacesTags;
+            size_t nGroupSurfaces;
+            GMSHProxy::model::getEntitiesForPhysicalGroup(constants::DIMENSION_2D, *physicalDimTagIt, groupSurfacesTags, nGroupSurfaces);
+
+            Boundary::Condition boundaryCondition;
+
             char* physicalName;
             GMSHProxy::model::getPhysicalName(constants::DIMENSION_2D, *physicalDimTagIt, physicalName);
-            BoundaryCondition boundaryCondition;
+            
             switch (*physicalName)
             {
             case 'D':
             {
-                boundaryCondition = BoundaryCondition::DIRICHLET;
+                boundaryCondition.type = Boundary::Condition::Type::DIRICHLET;
+                boundaryCondition.index = getConditionIndex(physicalName + 1);
                 break;
             }
             case 'N':
             {
-                boundaryCondition = BoundaryCondition::NEWMAN;
+                boundaryCondition.type = Boundary::Condition::Type::NEWMAN;
+                boundaryCondition.index = getConditionIndex(physicalName + 1);
                 break;
             }
             case 'C':
             {
-                boundaryCondition = BoundaryCondition::NONCONFORM_INTERAFACE;
+                if (nGroupSurfaces != 2)
+                {
+                    throw std::runtime_error("Each condition of nonconformity should include only 2 surfaces");
+                }
+
+                boundaryCondition.type = Boundary::Condition::Type::NONCONFORM_INTERFACE;
+                boundaryCondition.index = nNonconformalGroups;
+                ++nNonconformalGroups;
                 break;
             }
             default:
@@ -191,57 +218,209 @@ private:
                 throw std::runtime_error("Unknown type of condition");
             }
             }
+
             GMSHProxy::free(physicalName);
 
-            int* groupSurfacesTags;
-            size_t nGroupSurfacesTags;
-            GMSHProxy::model::getEntitiesForPhysicalGroup(constants::DIMENSION_2D, *physicalDimTagIt, groupSurfacesTags, nGroupSurfacesTags);
-
-            nSurfaces += nGroupSurfacesTags;
-
-            const int* groupSurfacesTagIt = groupSurfacesTags;
-            for (unsigned int j = 0; j < nGroupSurfacesTags; ++j)
-            {
-                Map::addElement<int, BoundaryCondition>(*groupSurfacesTagIt, boundaryCondition, conditionTypeByBoundaryTag, nMaxSurfaces);
-                ++groupSurfacesTagIt;
-            }
+            nProcessedSurfaces += nGroupSurfaces;
+            assignBoundaryConditionToGroupSurfaces(groupSurfacesTags, nGroupSurfaces, boundaryCondition, conditionTypeByBoundaryTag, nSurfaces);
 
             GMSHProxy::free(groupSurfacesTags);
             ++physicalDimTagIt;
         }
 
-        return nSurfaces;
+        GMSHProxy::free(physicalDimTags);
+
+        return nProcessedSurfaces;
     }
 
-    void getInterafces(const Volume* volumes, const unsigned int nVolumes, Interface*& nonconformInterfaces, unsigned int& nInterafaces)
+    void determineImplicitBoundariesConditions(const int* surfaceDimTagIt,
+                                               const unsigned int nSurfaces,
+                                               Map::Element<int, Boundary::Condition>* conditionTypeByBoundaryTag)
+    {
+        unsigned int nConformInterafces = 0;
+        for (unsigned int i = 0; i < nSurfaces; ++i)
+        {
+            ++surfaceDimTagIt;
+            Map::Element<int, Boundary::Condition>* mapElement = conditionTypeByBoundaryTag + (*surfaceDimTagIt) % nSurfaces;
+
+            if (mapElement->tag != *surfaceDimTagIt)
+            {
+                if (mapElement->tag == 0)
+                {
+                    mapElement->tag = *surfaceDimTagIt;
+
+                    int* upEntitiesTags;
+                    size_t nUpEntities;
+                    GMSHProxy::model::getSurfaceUpEntities(*surfaceDimTagIt, upEntitiesTags, nUpEntities);
+                    GMSHProxy::free(upEntitiesTags);
+
+                    if (nUpEntities == 2)
+                    {
+                        mapElement->value = { Boundary::Condition::Type::HOMOGENEOUS_NEWMAN, 0 };
+                    }
+                    else
+                    {
+                        mapElement->value = { Boundary::Condition::Type::HOMOGENEOUS_NEWMAN, nConformInterafces };
+                        ++nConformInterafces;
+                    }
+                    return;
+                }
+                else
+                {
+                    while (mapElement->next != nullptr && mapElement->tag != *surfaceDimTagIt)
+                    {
+                        mapElement = mapElement->next;
+                    }
+
+                    if (mapElement->tag != *surfaceDimTagIt)
+                    {
+                        int* upEntitiesTags;
+                        size_t nUpEntities;
+                        GMSHProxy::model::getSurfaceUpEntities(*surfaceDimTagIt, upEntitiesTags, nUpEntities);
+                        GMSHProxy::free(upEntitiesTags);
+
+                        if (nUpEntities == 2)
+                        {
+                            mapElement->next = new Map::Element<int, Boundary::Condition>(*surfaceDimTagIt, { Boundary::Condition::Type::HOMOGENEOUS_NEWMAN, 0 });
+                        }
+                        else
+                        {
+                            mapElement->next = new Map::Element<int, Boundary::Condition>(*surfaceDimTagIt, { Boundary::Condition::Type::HOMOGENEOUS_NEWMAN, nConformInterafces });
+                            ++nConformInterafces;
+                        }
+                        
+                    }
+
+                }
+            }
+
+            ++surfaceDimTagIt;
+        }
+    }
+
+    void determineBoundariesConditions(Map::Element<int, Boundary::Condition>* &conditionTypeByBoundaryTag, unsigned int &nSurfaces, unsigned int &nNonconformalGroups)
     {
         int* surfacesDimTags;
-        size_t nSurfacesDimTags;
-        GMSHProxy::model::getEntities(surfacesDimTags, nSurfacesDimTags, constants::DIMENSION_2D);
-
-        unsigned int nSurfaces = nSurfacesDimTags / 2;
-        int* physicalDimTags;
-        size_t nPhysicalDimTags;
-        GMSHProxy::model::getPhysicalGroups(physicalDimTags, nPhysicalDimTags, constants::DIMENSION_2D);
-        unsigned int nPhysicalGroups2D = nPhysicalDimTags / 2;
-
-        Map::MapElement<int, BoundaryCondition>* conditionTypeByBoundaryTag = new Map::MapElement<int, BoundaryCondition>[nSurfaces];
-
-        unsigned int nProcessedSurfaces = assignBoundariesTagsAndConditionTypes(physicalDimTags, nPhysicalGroups2D, conditionTypeByBoundaryTag, nSurfaces);
+        GMSHProxy::model::getEntities(surfacesDimTags, nSurfaces, constants::DIMENSION_2D);
+        unsigned int nProcessedSurfaces = determineExplicitBoundariesConditions(conditionTypeByBoundaryTag, nSurfaces, nNonconformalGroups);
 
         if (nProcessedSurfaces != nSurfaces)
         {
-            const int* surfaceDimTagIt = surfacesDimTags;
-            for (unsigned int i = 0; i < nSurfaces; ++i)
+            determineImplicitBoundariesConditions(surfacesDimTags, nSurfaces, conditionTypeByBoundaryTag);
+        }
+
+        GMSHProxy::free(surfacesDimTags);
+    }
+
+    unsigned int determineVolumesMaterialPhase(const MaterialPhase* materialPhasePtr, Map::Element<int, const MaterialPhase*>* materialPhasePtrByVolumeTag, const unsigned int nVolumes)
+    {
+        int* dimTags;
+        unsigned int nPhaseVolumes;
+        GMSHProxy::model::getEntitiesForPhysicalName(materialPhasePtr->name, dimTags, nPhaseVolumes);
+
+        const int* dimTagIt = dimTags;
+        for (unsigned int i = 0; i < nPhaseVolumes; ++i)
+        {
+            ++dimTagIt;
+            Map::Element<int, const MaterialPhase*>* materialPhasePtrByVolumeTagElement = materialPhasePtrByVolumeTag + (*dimTagIt) % nVolumes;
+            if (materialPhasePtrByVolumeTagElement->tag == 0)
             {
-                ++surfaceDimTagIt;
-                const Map::MapElement<int, BoundaryCondition>* conditionTypeByBoundaryTagIt = Map::tryElementAdding<int, BoundaryCondition>(*surfaceDimTagIt, BoundaryCondition::HOMOGENEOUS_NEWMAN, conditionTypeByBoundaryTag, nSurfaces);
+                materialPhasePtrByVolumeTagElement->tag = *dimTagIt;
+                materialPhasePtrByVolumeTagElement->value = materialPhasePtr;
+            }
+            else
+            {
+                while (materialPhasePtrByVolumeTag->next != nullptr)
+                {
+                    materialPhasePtrByVolumeTag = materialPhasePtrByVolumeTag->next;
+                }
+
+                materialPhasePtrByVolumeTag->next = new Map::Element<int, const MaterialPhase*>(*dimTagIt, materialPhasePtr);
             }
         }
-        //std::unordered_map<int, BoundaryCondition> conditionTypeByBoundaryTag;
-        //conditionTypeByBoundaryTag.reserve(nSurfaces);
 
-        //std::pair<int, BoundaryCondition>* pairsTagCondition = new std::pair<int, BoundaryCondition>[nSurfaces];
+        GMSHProxy::free(dimTags);
+
+        return nPhaseVolumes;
+    }
+
+    void determineVolumesMaterialPhases(const MaterialPhase materialPhases[2], Map::Element<int, const MaterialPhase*>* materialPhasePtrByVolumeTag, const unsigned int nVolumes)
+    {
+        unsigned int nProcessedVolumes = determineVolumesMaterialPhase(materialPhases, materialPhasePtrByVolumeTag, nVolumes);
+        nProcessedVolumes += determineVolumesMaterialPhase(materialPhases + 1, materialPhasePtrByVolumeTag, nVolumes);
+
+        if (nProcessedVolumes != nVolumes)
+        {
+            throw std::runtime_error("For not all volumes material phase is set");
+        }
+    }
+
+    void getModel(const MaterialPhase materialPhases[2], Volume*& volumes, unsigned int& nVolumes, NonconformInterface*& nonconformInterfaces, unsigned int& nNonconformInterafaces)
+    {
+        Map::Element<int, Boundary::Condition>* conditionTypeByBoundaryTag;
+        unsigned int nSurfaces;
+
+        determineBoundariesConditions(conditionTypeByBoundaryTag, nSurfaces, nNonconformInterafaces);
+
+        nonconformInterfaces = new NonconformInterface[nNonconformInterafaces];
+        bool* wasNonconfromInterfaceProcessed = new bool[nNonconformInterafaces]{};
+
+        int* volumesDimTags;
+        GMSHProxy::model::getEntities(volumesDimTags, nVolumes, constants::DIMENSION_3D);
+
+        volumes = new Volume[nVolumes];
+        Map::Element<int, const MaterialPhase*>* materialPhaseByVolumeTag = new Map::Element<int, const MaterialPhase*>[nVolumes];
+        determineVolumesMaterialPhases(materialPhases, materialPhaseByVolumeTag, nVolumes);
+
+        const int* volumesDimTagsIt = volumesDimTags;
+        Volume* volumeIt = volumes;
+        for (unsigned int i = 0; i < nVolumes; ++i)
+        {
+            ++volumesDimTagsIt;
+            volumeIt->tag = *volumesDimTagsIt;
+            volumeIt->materialPhasePtr = Map::getExistedValue(*volumesDimTagsIt, materialPhaseByVolumeTag + volumeIt->tag % nVolumes);
+
+            int* boundariesDimTags;
+            unsigned int nBoundaries;
+            GMSHProxy::model::getBoundaries(constants::DIMENSION_3D, volumeIt->tag, boundariesDimTags, nBoundaries);
+            volumeIt->boundaries = new Boundary[nBoundaries];
+
+            const int* boundariesDimTagIt = boundariesDimTags;
+            Boundary* boundaryIt = volumeIt->boundaries;
+            for (unsigned int j = 0; j < nBoundaries; ++j)
+            {
+                ++boundariesDimTagIt;
+                int boundaryTag = *boundariesDimTagIt;
+                boundaryIt->tag = boundaryTag;
+                boundaryIt->condition = Map::getExistedValue(boundaryTag, conditionTypeByBoundaryTag + boundaryTag % nSurfaces);
+                boundaryIt->isPlane = GMSHProxy::model::isSurfacePlane(boundaryTag);
+
+                if (boundaryIt->condition.type == Boundary::Condition::Type::NONCONFORM_INTERFACE)
+                {
+                    NonconformInterface* nonconformInterface = nonconformInterfaces + boundaryIt->condition.index;
+                    if (wasNonconfromInterfaceProcessed[boundaryIt->condition.index])
+                    {
+                        nonconformInterface->sidesTags[1] = boundaryTag;
+                        nonconformInterface->volumesIndexes[1] = i;
+                    }
+                    else
+                    {
+                        nonconformInterface->thermalConductivity = volumeIt->materialPhasePtr->thermalConductivity;
+                        nonconformInterface->sidesTags[0] = boundaryTag;
+                        nonconformInterface->volumesIndexes[0] = i;
+                    }
+                }
+                ++boundariesDimTagIt;
+                ++boundaryIt;
+            }
+
+            GMSHProxy::free(boundariesDimTags);
+        }
+
+        delete[] materialPhaseByVolumeTag;
+        delete[] conditionTypeByBoundaryTag;
+        delete[] wasNonconfromInterfaceProcessed;
+        GMSHProxy::free(volumesDimTags);
     }
 
     double* dblBuffer;
@@ -257,15 +436,15 @@ private:
     Volume* volumes;
 	size_t nVolumes;
 
-	TetrahedronsAdjusments* volumesElementsAdjusments;
-	CrossTetrahedronsAdjusments* volumesInteriorFacesAdjusments;
+	ElementsAdjusmentsSet* volumesElementsAdjusments;
+	CrossElementsAdjusmentsSet* volumesInteriorFacesAdjusments;
 	double** volumesInitialX;
 
     Interface* nonconformalInterfaces;
 	size_t nNonconformalInterfaces;
 
-    InterfaceSideElements* interfacesSidesElements;
-	CrossTetrahedronsAdjusments* nonconformalInterfacesFragmentsAdjusments;
+    InterfaceSideElementsSet* interfacesSidesElements;
+	CrossElementsAdjusmentsSet* nonconformalInterfacesFragmentsAdjusments;
 
 
     void computeTetrahedronsAdjusments(const double (*localJacobianMatrixIt)[LocalCoordinates3D::COUNT * Coordinates::COUNT],

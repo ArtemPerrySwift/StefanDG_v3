@@ -1,8 +1,10 @@
 #pragma once
 #include "LocalCoordinates3D.h"
 #include "LocalCoordinates2D.h"
+#include "Coordinates.h"
+#include "GeometryConstants.h"
 #include <cstdint>
-#include <cmath>
+
 
 namespace NumericalIntegration
 {
@@ -25,6 +27,11 @@ namespace NumericalIntegration
 			static const uint8_t nSteps = 4;
 			static const LocalCoordinates3D localPoints[nSteps];
 			static const double weights[nSteps];
+
+			static double integrate(const double values[nSteps]);
+			static double integrateProduct(const double multipliers1[nSteps], const double multipliers2[nSteps]);
+			static double integrateProduct(const Coordinates vectors1[nSteps], const Coordinates vectors2[nSteps]);
+
 		private:
 			Gauss<2>() = default;
 			static const double coord1;
@@ -53,6 +60,12 @@ namespace NumericalIntegration
 			static const uint8_t nSteps = 3;
 			static const LocalCoordinates2D localPoints[nSteps];
 			static const double weights[nSteps];
+
+			static double integrate(const double values[nSteps]);
+			static double integrateProduct(const double multipliers1[nSteps], const double multipliers2[nSteps]);
+
+			static void changeValuesOrder(double values[nSteps], const uint8_t nodesChangins[constants::triangle::N_NODES]);
+			static void changeValuesOrder(const double values[nSteps], const uint8_t nodesChangins[constants::triangle::N_NODES], double outValues[nSteps]);
 		private:
 			Gauss<2>() = default;
 			static const double coord1;

@@ -1,6 +1,6 @@
 #pragma once
 
-struct TetrahedronsAdjusments
+struct ElementsAdjusmentsSet
 {
 	double* bilinear;
 	double* linear;
@@ -8,7 +8,7 @@ struct TetrahedronsAdjusments
 	size_t* tetrahedronsTags;
 	size_t nTetrahedrons;
 
-	static size_t calcAllTrtrahedronsCount(const TetrahedronsAdjusments* tetrahedronsAdjusmentsSetIt, const size_t nSets);
+	static size_t calcAllTrtrahedronsCount(const ElementsAdjusmentsSet* tetrahedronsAdjusmentsSetIt, const size_t nSets);
 };
 
 

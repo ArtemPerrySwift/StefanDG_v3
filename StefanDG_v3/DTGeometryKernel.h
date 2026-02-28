@@ -1,7 +1,11 @@
 #pragma once
 #include "BoundariesConditions.h"
+#include "Boundary.h"
 #include "MaterialPhase.h"
 #include "GeometryConstants.h"
+#include "FacesSet.h"
+#include "Coordinates.h"
+#include "LocalCoordinates3D.h"
 
 namespace DTGeometryKernel
 {
@@ -31,6 +35,15 @@ namespace DTGeometryKernel
                                                const size_t(*fragmentsFacesIndexesIt)[N_CROSS_ELEMENTS],
                                                const size_t* const intefaceTetrahedronsIndexes[N_CROSS_ELEMENTS],
                                                size_t(*fragmentsTetrahedronsIndexesIt)[N_CROSS_ELEMENTS]);
+
+
+    size_t getVolumeFacesSets(const int volumeTag,
+                              const Boundary boundaries[],
+                              const unsigned int nBoundaries,
+                              int& interiorFacesEntityTag,
+                              FacesSet& interiorFacesSet,
+                              FacesSet boundariesFacesSets[],
+                              void* memoryBuffer);
 
     size_t createVolumeFacesEntities(const int volumeTag,
         const int boundariesTags[],

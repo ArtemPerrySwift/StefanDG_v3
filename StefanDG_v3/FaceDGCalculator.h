@@ -22,6 +22,9 @@ public:
 
 	static void computePowerVector(const uint8_t faceIndex, const double targetFunctionValues[NumericalIntegrationMethod::nSteps], double powerVector[Basis::N_FUNCTIONS]);
 
+	static void changeIntegrationValuesOrder(double values[N_BASIS_VALUES], const uint8_t nodesChangins[constants::triangle::N_NODES]);
+	static void changeIntegrationValuesOrder(const double values[N_BASIS_VALUES], const uint8_t nodesChangins[constants::triangle::N_NODES], double outValues[N_BASIS_VALUES]);
+
 	static const double (*getValuesByFace())[N_BASIS_VALUES];
 	static const LocalCoordinates3D (*getLocalGradientsByFace())[N_BASIS_VALUES];
 	static const double* const* getMassMatrixies();
@@ -47,12 +50,6 @@ private:
 
 	static void computeMassVector(const double* faceValueIt, double* massVectorIElementt);
 	static void computeMassVectors();
-
-	static double integrateFlowFunction(const double* iBasisFunctionValueIt, const double* jBasisFunctionNormalDerivativeIt);
-	static double integrateFlowFunction(const double* iBasisFunctionNormalDerivativeIt);
-	static double integrateMassFunction(const double* iBasisFunctionValueIt, const double* jBasisFunctionValueIt);
-	static double integrateMassFunction(const double* iBasisFunctionValueIt);
-	static double integratePowerFunction(const double* iBasisFunctionValueIt, const double* targetFunctionValueIt);
 
 	static double (*_massCrossMatrixByFaces)[constants::tetrahedron::N_FACES][N_LOCAL_MATRIX_ELEMENTS];
 	static double** _massMatrixByFace;

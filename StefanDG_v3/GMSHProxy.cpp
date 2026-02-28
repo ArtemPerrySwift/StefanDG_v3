@@ -89,7 +89,21 @@ namespace GMSHProxy
             {
                 throwLastError();
             }
+        }
 
+        void getEntitiesForPhysicalName(const char name[], int*& dimTags, unsigned int& nEntities)
+        {
+            int ierr = 0;
+
+            size_t nDimTags;
+
+            gmshModelGetEntitiesForPhysicalName(name, &dimTags, &nDimTags, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            nEntities = nDimTags / 2;
         }
 
         void getPhysicalGroups(int* &dimTags, size_t &nDimTags, int dim)
@@ -100,6 +114,19 @@ namespace GMSHProxy
             {
                 throwLastError();
             }
+        }
+
+        void getPhysicalGroups(int*& dimTags, unsigned int& nGroups, int dim)
+        {
+            int ierr = 0;
+            size_t nDimTags;
+            gmshModelGetPhysicalGroups(&dimTags, &nDimTags, dim, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            nGroups = nDimTags / 2;
         }
 
         void getPhysicalGroups(const int dim, int** tags, size_t* nTags)
@@ -140,6 +167,19 @@ namespace GMSHProxy
             }
         }
 
+        void getEntitiesForPhysicalGroup(const int dim, const int physicalTag, int*& entitiesTags, unsigned int& nEntities)
+        {
+            int ierr = 0;
+            size_t nEntitiesLong;
+            gmshModelGetEntitiesForPhysicalGroup(dim, physicalTag, &entitiesTags, &nEntitiesLong, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            nEntities = nEntitiesLong;
+        }
+
         void getEntities(int* &dimTags, size_t &nDimTags, const int dim)
         {
             int ierr = 0;
@@ -148,6 +188,19 @@ namespace GMSHProxy
             {
                 throwLastError();
             }
+        }
+
+        void getEntities(int*& dimTags, unsigned int& nEntities, const int dim)
+        {
+            int ierr = 0;
+            size_t nDimTags;
+            gmshModelGetEntities(&dimTags, &nDimTags, dim, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            nEntities = nDimTags / 2;
         }
 
         void getEntities(const int dim, int** tags, size_t* nEntities)
@@ -203,6 +256,20 @@ namespace GMSHProxy
             {
                 throwLastError();
             }
+        }
+
+        void getBoundaries(const int entityDim, const int entityTag, int*& boundariesDimTags, unsigned int& nBoundaries)
+        {
+            int entityDimTag[] = { entityDim, entityTag };
+            size_t nBoundariesDimTags;
+            int ierr;
+            gmshModelGetBoundary(entityDimTag, 2, &boundariesDimTags, &nBoundariesDimTags, FALSE_C, FALSE_C, FALSE_C, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            nBoundaries = nBoundariesDimTags / 2;
         }
 
         void getBoundariesFor3DEntity(const int entityTag, int*& boundariesTags, size_t& nBoundariesTags)
@@ -322,6 +389,23 @@ namespace GMSHProxy
             }
         }
 
+        bool isSurfacePlane(const int surfaceTag)
+        {
+            char* surfaceType;
+
+            int ierr;
+            gmshModelGetType(constants::DIMENSION_2D, surfaceTag, &surfaceType, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            bool flag = strcmp(surfaceType, "Plane");
+            gmshFree(surfaceType);
+
+            return !flag;
+        }
+
         int addDescreteEntity(int dim)
         {
             int ierr;
@@ -333,6 +417,16 @@ namespace GMSHProxy
             return entityTag;
         }
 
+        int addDescreteEntity2D()
+        {
+            int ierr;
+            int entityTag = gmshModelAddDiscreteEntity(constants::DIMENSION_2D, DEFAULT_TAG, nullptr, 0, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+            return entityTag;
+        }
 
         void get2DPhysicalNames(const int* physicalTagsIt, const size_t nTags, char** physicalNamesIt)
         {
@@ -581,14 +675,13 @@ namespace GMSHProxy
             void getTriangleJacobians(double(*&transpJacobianMatrixes)[Coordinates::COUNT * LocalCoordinates3D::COUNT],
                                       double*& determinants,
                                       Coordinates*& initPoints,
-                                      size_t& nElements,
                                       const int tag)
             {
                 const double localCoord[LocalCoordinates3D::COUNT] = { 0.0, 0.0, 0.0 };
                 int ierr;
                 double* transpJacobianMatrixesElements;
                 double* initPointsCoordinates;
-                size_t jacobians_n, coord_n;
+                size_t jacobians_n, coord_n, nElements;
                 gmshModelMeshGetJacobians(TRIANGLE_TYPE,
                                           localCoord,
                                           LocalCoordinates3D::COUNT,
@@ -612,7 +705,7 @@ namespace GMSHProxy
                 }
             }
 
-            void getTetrahedronJacobians(double(*&transpJacobianMatrixes)[Coordinates::COUNT * LocalCoordinates3D::COUNT],
+            void getTetrahedronsJacobians(double(*&transpJacobianMatrixes)[Coordinates::COUNT * LocalCoordinates3D::COUNT],
                                          double*& determinants,
                                          Coordinates*& initPoints,
                                          size_t& nElements,
@@ -646,7 +739,41 @@ namespace GMSHProxy
                 }
             }
 
-            void getTrianglesNodes(size_t(*&traianglesNodesTags)[constants::triangle::N_NODES], Coordinates(*&traianglesNodes)[constants::triangle::N_NODES], size_t& nTriangles, const int tag)
+            void getTetrahedronsJacobians(double(*&transpJacobianMatrixes)[Coordinates::COUNT * LocalCoordinates3D::COUNT],
+                                         double*& determinants,
+                                         Coordinates*& initPoints,
+                                         const int tag)
+            {
+                int ierr;
+
+                const double localCoord[LocalCoordinates3D::COUNT] = { 0.0, 0.0, 0.0 };
+                double* transpJacobianMatrixesElements;
+                double* initPointsCoordinates;
+                size_t nJacobians, nDeterminants, nCoordinates;
+                gmshModelMeshGetJacobians(TETRAHEDRON_TYPE,
+                                          localCoord,
+                                          LocalCoordinates3D::COUNT,
+                                          &transpJacobianMatrixesElements,
+                                          &nJacobians,
+                                          &determinants,
+                                          &nDeterminants,
+                                          &initPointsCoordinates,
+                                          &nCoordinates,
+                                          tag,
+                                          TASK_DEFAULT,
+                                          N_TASK_DEFAULT,
+                                          &ierr);
+
+                transpJacobianMatrixes = (double(*)[Coordinates::COUNT * LocalCoordinates3D::COUNT])transpJacobianMatrixesElements;
+                initPoints = (Coordinates*)initPointsCoordinates;
+
+                if (ierr)
+                {
+                    throwLastError();
+                }
+            }
+
+            void getTrianglesNodes(size_t(*&traianglesNodesTags)[constants::triangle::N_NODES], Coordinates(*&traianglesNodes)[constants::triangle::N_NODES], const int tag)
             {
                 size_t* tags;
                 size_t nTags;
@@ -667,8 +794,6 @@ namespace GMSHProxy
 
                 traianglesNodesTags = (size_t(*)[constants::triangle::N_NODES])tags;
                 traianglesNodes = (Coordinates(*)[constants::triangle::N_NODES])coordinates;
-
-                nTriangles = nTags / constants::triangle::N_NODES;
             }
 
             void getIntegrationPoints(const int elementType, const char integrationType[], double** localCoord, double** weights, uint8_t* nIntegrationSteps)
@@ -723,6 +848,16 @@ namespace GMSHProxy
                 }
             }
 
+            void getTetrahedronsFacesByElements(size_t (*&nodesTags)[constants::tetrahedron::N_FACES][constants::triangle::N_NODES], size_t &nNodesTags, const int entityTag)
+            {
+                int ierr;
+                gmshModelMeshGetElementFaceNodes(TETRAHEDRON_TYPE, TRIANGLE_FACE_TYPE, (size_t**)(&nodesTags), &nNodesTags, entityTag, FALSE_C, TASK_DEFAULT, N_TASK_DEFAULT, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+            }
+
             void getFaces(const int faceType, size_t* nodesTags, size_t nNodesTags, size_t** facesTags)
             {
                 int ierr;
@@ -730,6 +865,70 @@ namespace GMSHProxy
                 size_t nFacesOrientations, nFaces;
 
                 gmshModelMeshGetFaces(faceType, nodesTags, nNodesTags, facesTags, &nFaces, &facesOrientations, &nFacesOrientations, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                gmshFree(facesOrientations);
+            }
+
+            void getTetrahedronsFaces(const size_t(*nodesTags)[constants::tetrahedron::N_FACES][constants::triangle::N_NODES], const size_t nNodesTags, size_t (*&facesTags)[constants::tetrahedron::N_FACES])
+            {
+                int ierr;
+                int* facesOrientations;
+                size_t nFacesOrientations, nFaces;
+
+                gmshModelMeshGetFaces(TRIANGLE_FACE_TYPE, (const size_t*)nodesTags, nNodesTags, (size_t**)(&facesTags), &nFaces, &facesOrientations, &nFacesOrientations, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                gmshFree(facesOrientations);
+            }
+
+            void getTetrahedronsFaces(size_t(*&nodesTags)[constants::tetrahedron::N_FACES][constants::triangle::N_NODES],
+                                      size_t(*&facesTags)[constants::tetrahedron::N_FACES],
+                                      size_t &nFaces,
+                                      const int entityTag)
+            {
+                int ierr;
+                size_t nNodes;
+                gmshModelMeshGetElementFaceNodes(TETRAHEDRON_TYPE, TRIANGLE_FACE_TYPE, (size_t**)(&nodesTags), &nNodes, entityTag, FALSE_C, TASK_DEFAULT, N_TASK_DEFAULT, &ierr);
+
+                int* facesOrientations;
+                size_t nFacesOrientations;
+
+                gmshModelMeshGetFaces(TRIANGLE_FACE_TYPE, (const size_t*)nodesTags, nNodes, (size_t**)(&facesTags), &nFaces, &facesOrientations, &nFacesOrientations, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                gmshFree(facesOrientations);
+            }
+
+            void getTetrahedronsFacesOnSurface(const int surfaceTag, size_t* &facesTags, size_t& nFaces)
+            {
+                int ierr;
+
+                size_t* elementTags;
+                size_t* nodeTags;
+                size_t nElements;
+                size_t nNodes;
+
+                gmshModelMeshGetElementsByType(TRIANGLE_TYPE, &elementTags, &nElements, &nodeTags, &nNodes, surfaceTag, TASK_DEFAULT, N_TASK_DEFAULT, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                gmshFree(elementTags);
+
+                int* facesOrientations;
+                size_t nFacesOrientations;
+                gmshModelMeshGetFaces(TRIANGLE_FACE_TYPE, (const size_t*)nodeTags, nNodes, (size_t**)(&facesTags), &nFaces, &facesOrientations, &nFacesOrientations, &ierr);
                 if (ierr)
                 {
                     throwLastError();
@@ -760,7 +959,16 @@ namespace GMSHProxy
                 {
                     throwLastError();
                 }
+            }
 
+            void addTriangles(const int tag, size_t* nodesTags, size_t nNodesTags)
+            {
+                int ierr;
+                gmshModelMeshAddElementsByType(tag, TRIANGLE_TYPE, nullptr, 0, nodesTags, nNodesTags, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
             }
 
             void getNode(const size_t nodeTag, Coordinates& node)

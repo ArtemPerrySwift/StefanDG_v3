@@ -1,12 +1,12 @@
 #pragma once
 
-struct CrossTetrahedronsAdjusments
+struct CrossElementsAdjusmentsSet
 {
-	double* bilinear;
+	const double* bilinear;
 
-	size_t(*tetrahedronsIndexes)[2];
+	const size_t* elementIndexes;
 	size_t nCrossElements;
 
-	static size_t calcAllCrossElementsCount(const CrossTetrahedronsAdjusments* crossTetrahedronsAdjusmentsSetIt, const size_t nSets);
+	static size_t calcAllCrossElementsCount(const CrossElementsAdjusmentsSet* crossTetrahedronsAdjusmentsSetIt, const size_t nSets);
 };
 

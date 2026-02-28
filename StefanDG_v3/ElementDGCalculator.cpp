@@ -8,13 +8,13 @@ void ElementDGCalculator<Basis>::computeMassMatrix()
 	const double* iFunctionValues = _values;
 	for (uint8_t i = 0; i < Basis::N_FUNCTIONS; ++i)
 	{
-		*di = integrateMassFunction(iFunctionValues, iFunctionValues);
+		*di = NumericalIntegrationMethod::integrateProduct(iFunctionValues, iFunctionValues);
 		const double* jFunctionValues = iFunctionValues + NumericalIntegrationMethod::nSteps;
 		double* ijElement = di + 1;
 		double* jiElement = di + NumericalIntegrationMethod::nSteps;
 		for (uint8_t j = i + 1; j < Basis::N_FUNCTIONS; ++j)
 		{
-			*ijElement = *jiElement = integrateMassFunction(iFunctionValues, jFunctionValues);
+			*ijElement = *jiElement = NumericalIntegrationMethod::integrateProduct(iFunctionValues, jFunctionValues);
 			++ijElement;
 
 			jiElement += Basis::N_FUNCTIONS;
@@ -33,74 +33,11 @@ void ElementDGCalculator<Basis>::computeMassVector()
 	const double* iBasisFunctionValues = _values;
 	for (uint8_t i = 0; i < Basis::N_FUNCTIONS; ++i)
 	{
-		*massVectorElementIt = integrateMassFunction(iBasisFunctionValues);
+		*massVectorElementIt = NumericalIntegrationMethod::integrate(iBasisFunctionValues);
 
 		iBasisFunctionValues += NumericalIntegrationMethod::nSteps;
 		++massVectorElementIt;
 	}
-}
-
-template<class Basis>
-double ElementDGCalculator<Basis>::integrateMassFunction(const double* iBasisFunctionValueIt)
-{
-	const double* weightsIt = NumericalIntegrationMethod::weights;
-	double sum = 0.0;
-	for (uint8_t k = 0; k < NumericalIntegrationMethod::nSteps; ++k)
-	{
-		sum += (*weightsIt) * (*iBasisFunctionValueIt);
-		++weightsIt;
-		++iBasisFunctionValueIt;
-	}
-
-	return sum;
-}
-
-template<class Basis>
-double ElementDGCalculator<Basis>::integrateMassFunction(const double* iBasisFunctionValueIt, const double* jBasisFunctionValueIt)
-{
-	const double* weightsIt = NumericalIntegrationMethod::weights;
-	double sum = 0.0;
-	for (uint8_t k = 0; k < NumericalIntegrationMethod::nSteps; ++k)
-	{
-		sum += (*weightsIt) * (*iBasisFunctionValueIt) * (*jBasisFunctionValueIt);
-		++weightsIt;
-		++iBasisFunctionValueIt;
-		++jBasisFunctionValueIt;
-	}
-	
-	return sum;
-}
-
-template<class Basis>
-double ElementDGCalculator<Basis>::integrateStiffnessFunction(const Coordinates* iBasisFunctionGradientIt, const Coordinates* jBasisFunctionGradientIt)
-{
-	const double* weightsIt = NumericalIntegrationMethod::weights;
-	double sum = 0.0;
-	for (uint8_t k = 0; k < NumericalIntegrationMethod::nSteps; ++k)
-	{
-		sum += (*weightsIt) * (iBasisFunctionGradientIt->x * jBasisFunctionGradientIt->x + iBasisFunctionGradientIt->y * jBasisFunctionGradientIt->y + iBasisFunctionGradientIt->z * jBasisFunctionGradientIt->z);
-		++weightsIt;
-		++iBasisFunctionGradientIt;
-		++jBasisFunctionGradientIt;
-	}
-
-	return sum;
-}
-
-template<class Basis>
-double ElementDGCalculator<Basis>::integratePowerFunction(const double* iBasisFunctionValueIt, const double* targetFunctionValueIt)
-{
-	const double* weightsIt = NumericalIntegrationMethod::weights;
-	double sum = 0.0;
-	for (uint8_t k = 0; k < NumericalIntegrationMethod::nSteps; ++k)
-	{
-		sum += (*weightsIt) * (*iBasisFunctionValueIt) * (*targetFunctionValueIt);
-		++weightsIt;
-		++iBasisFunctionValueIt;
-		++targetFunctionValueIt;
-	}
-
-	return sum;
 }
 
 template<class Basis>
@@ -177,13 +114,13 @@ void ElementDGCalculator<Basis>::computeStiffnessMatrix(const Coordinates gradie
 	const Coordinates* iFunctionGradients = gradients;
 	for (uint8_t i = 0; i < Basis::N_FUNCTIONS; ++i)
 	{
-		*di = integrateStiffnessFunction(iFunctionGradients, iFunctionGradients);
+		*di = NumericalIntegrationMethod::integrateProduct(iFunctionGradients, iFunctionGradients);
 		const Coordinates* jFunctionGradients = iFunctionGradients + NumericalIntegrationMethod::nSteps;
 		double* ijElement = di + 1;
 		double* jiElement = di + NumericalIntegrationMethod::nSteps;
 		for (uint8_t j = i + 1; j < Basis::N_FUNCTIONS; ++j)
 		{
-			*ijElement = *jiElement = integrateStiffnessFunction(iFunctionGradients, jFunctionGradients);
+			*ijElement = *jiElement = NumericalIntegrationMethod::integrateProduct(iFunctionGradients, jFunctionGradients);
 			++ijElement;
 
 			++ijElement;
@@ -202,7 +139,7 @@ void ElementDGCalculator<Basis>::computePowerVector(const double targetFunctionV
 	const double* iBasisFunctionValues = _values;
 	for (uint8_t i = 0; i < Basis::N_FUNCTIONS; ++i)
 	{
-		*powerVector = integratePowerFunction(iBasisFunctionValues, targetFunctionValues);
+		*powerVector = NumericalIntegrationMethod::integrateProduct(iBasisFunctionValues, targetFunctionValues);
 
 		iBasisFunctionValues += NumericalIntegrationMethod::nSteps;
 		++powerVector;

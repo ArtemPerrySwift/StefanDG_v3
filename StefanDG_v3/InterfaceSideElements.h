@@ -2,7 +2,7 @@
 #include "Coordinates.h"
 #include "LocalCoordinates3D.h"
 
-struct InterfaceSideElements
+struct InterfaceSideElementsSet
 {
 	const size_t* indexes;
     const uint8_t* facesLocalIndexes;

@@ -35,11 +35,6 @@ private:
 	static void computeMassMatrix();
 	static void computeMassVector();
 
-	static double integrateMassFunction(const double* iBasisFunctionValueIt);
-	static double integrateMassFunction(const double* iBasisFunctionValueIt, const double* jBasisFunctionValueIt);
-	static double integrateStiffnessFunction(const Coordinates* iBasisFunctionGradientIt, const Coordinates* jBasisFunctionGradientIt);
-	static double integratePowerFunction(const double* iBasisFunctionValueIt, const double* targetFunctionValueIt);
-
 	static double* _memoryBuffer;
 	static double* _massMatrix;
 	static double* _massVector;

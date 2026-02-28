@@ -149,12 +149,14 @@
   <ItemGroup>
     <ClInclude Include="Bases.h" />
     <ClInclude Include="BoundariesConditions.h" />
+    <ClInclude Include="Boundary.h" />
     <ClInclude Include="Coordinates.h" />
     <ClInclude Include="CoordinatesFunctions.h" />
     <ClInclude Include="CrossTetrahedronsAdjusments.h" />
     <ClInclude Include="DGStefanTask.h" />
     <ClInclude Include="DTGeometryKernel.h" />
     <ClInclude Include="FaceDGCalculator.h" />
+    <ClInclude Include="FacesSet.h" />
     <ClInclude Include="GeometryConstants.h" />
     <ClInclude Include="ElementDGCalculator.h" />
     <ClInclude Include="GMSHProxy.h" />
@@ -166,6 +168,7 @@
     <ClInclude Include="LocalCoordinates3D.h" />
     <ClInclude Include="Map.h" />
     <ClInclude Include="MaterialPhase.h" />
+    <ClInclude Include="NonconformInterface.h" />
     <ClInclude Include="NumericalIntegration.h" />
     <ClInclude Include="Solution.h" />
     <ClInclude Include="TetrahedronsAdjusments.h" />

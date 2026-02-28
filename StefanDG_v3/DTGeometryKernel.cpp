@@ -1,5 +1,6 @@
 #include "DTGeometryKernel.h"
 #include "GMSHProxy.h"
+#include "Map.h"
 
 #include <unordered_map>
 #include <stdexcept>
@@ -511,7 +512,6 @@ namespace DTGeometryKernel
             }
         }
 
-
         static void determineFaceTetrahedronConnections(const size_t* tetrahedronsFacesTags,
             const size_t nTetrahedrons,
             const size_t* const* boundariesFacesTags,
@@ -705,7 +705,7 @@ namespace DTGeometryKernel
         {
             for (size_t i = 0; i < nBoundaries; ++i)
             {
-                if (*boundaryConditionIt != BoundaryCondition::HOMOGENEOUS_NEWMAN || *boundaryConditionIt != BoundaryCondition::NONCONFORM_INTERAFACE)
+                if (*boundaryConditionIt != BoundaryCondition::HOMOGENEOUS_NEWMAN || *boundaryConditionIt != BoundaryCondition::NONCONFORM_INTERFACE)
                 {
                     *boundariesFacesEntitiesTagsIt = createFacesEntity(tetrahedronsFacesNodesTags, *boundariesFacesTetrahedronsIndexesIt, *boundariesFacesLocalIndexesIt, *nBoundariesFacesIt);
                 }
@@ -723,6 +723,176 @@ namespace DTGeometryKernel
             }
         }
 
+        size_t getVolumeFacesSets(const int volumeTag,
+                                  const Boundary boundaries[],
+                                  const unsigned int nBoundaries,
+                                  int& interiorFacesEntityTag,
+                                  FacesSet &interiorFacesSet,
+                                  FacesSet boundariesFacesSets[],
+                                  void* memoryBuffer)
+        {
+            size_t(*facesNodesTags)[constants::tetrahedron::N_FACES][constants::triangle::N_NODES];
+            size_t(*facesTags)[constants::tetrahedron::N_FACES];
+            size_t nFaces;
+
+            GMSHProxy::model::mesh::getTetrahedronsFaces(facesNodesTags, facesTags, nFaces, volumeTag);
+
+            size_t** boundariesFacesTagsSets = (size_t**)memoryBuffer;
+
+            const Boundary* boundaryIt = boundaries;
+            FacesSet* boundaryFacesSetIt = boundariesFacesSets;
+            size_t** boundaryFacesTagsSetIt = boundariesFacesTagsSets;
+            size_t nBoundariesFaces = 0;
+            for (unsigned int i = 0; i < nBoundaries; ++i)
+            {
+                GMSHProxy::model::mesh::getTetrahedronsFacesOnSurface(boundaryIt->tag, *boundaryFacesTagsSetIt, boundaryFacesSetIt->count);
+
+                nBoundariesFaces += boundaryFacesSetIt->count;
+
+                ++boundaryIt;
+                ++boundaryFacesTagsSetIt;
+                ++boundaryFacesSetIt;
+            }
+
+            size_t nInteriorFaces2x = nFaces - nBoundariesFaces;
+            size_t* faceElementIndexIt = new size_t[nInteriorFaces2x];
+            uint8_t* faceLocalIndexIt = new uint8_t[nInteriorFaces2x];
+
+            interiorFacesSet.count = nInteriorFaces2x / 2;
+            interiorFacesSet.elementIndexes = faceElementIndexIt;
+            interiorFacesSet.localindexes = faceLocalIndexIt;
+
+            size_t nUniqueFaces = interiorFacesSet.count + nBoundariesFaces;
+            Map::Element<size_t, size_t>* faceIndexByFaceTag = new Map::Element<size_t, size_t>[nUniqueFaces];
+            const size_t* faceTagIt = *facesTags;
+
+            size_t nEntityFacesNodes = interiorFacesSet.count * constants::triangle::N_NODES;
+            size_t* entityFacesNodes = new size_t[nEntityFacesNodes];
+            size_t* entityFacesNodesIt = entityFacesNodes;
+
+            size_t nTetrahedrons = nFaces / constants::tetrahedron::N_FACES;
+            for (size_t iTetrahedron = 0, iFace = 0; iTetrahedron < nTetrahedrons; ++iTetrahedron)
+            {
+                for (uint8_t iFaceLocal = 0; iFaceLocal < constants::tetrahedron::N_FACES; ++iFaceLocal, ++iFace)
+                {
+                    Map::Element<size_t, size_t>* faceIndexByFaceTagElement = faceIndexByFaceTag + *faceTagIt % nUniqueFaces;
+                    if (faceIndexByFaceTagElement->tag == 0)
+                    {
+                        faceIndexByFaceTagElement->tag = *faceTagIt;
+                        faceIndexByFaceTagElement->value = iFace;
+                    }
+                    else
+                    {
+                        while (faceIndexByFaceTagElement->tag != *faceTagIt && faceIndexByFaceTagElement->next != nullptr)
+                        {
+                            faceIndexByFaceTagElement = faceIndexByFaceTagElement->next;
+                        }
+
+                        if (faceIndexByFaceTagElement->tag == *faceTagIt)
+                        {
+                            *faceElementIndexIt = faceIndexByFaceTagElement->value / constants::tetrahedron::N_FACES;
+                            *faceLocalIndexIt = faceIndexByFaceTagElement->value % constants::tetrahedron::N_FACES;
+
+                            entityFacesNodesIt = std::copy_n(facesNodesTags[*faceElementIndexIt][*faceLocalIndexIt], constants::triangle::N_NODES, entityFacesNodesIt);
+
+                            ++faceElementIndexIt;
+                            ++faceLocalIndexIt;
+
+                            *faceElementIndexIt = iTetrahedron;
+                            *faceLocalIndexIt = iFaceLocal;
+                            ++faceElementIndexIt;
+                            ++faceLocalIndexIt;
+                        }
+                        else
+                        {
+                            faceIndexByFaceTagElement->tag = *faceTagIt;
+                            faceIndexByFaceTagElement->value = iFace;
+                        }
+                    }
+
+                    ++faceTagIt;
+                }
+            }
+
+            GMSHProxy::free(facesTags);
+
+            interiorFacesEntityTag = GMSHProxy::model::addDescreteEntity2D();
+            GMSHProxy::model::mesh::addTriangles(interiorFacesEntityTag, entityFacesNodes, nEntityFacesNodes);
+
+            delete[] entityFacesNodes;
+
+            boundaryFacesSetIt = boundariesFacesSets;
+            boundaryIt = boundaries;
+            boundaryFacesTagsSetIt = boundariesFacesTagsSets;
+            for (unsigned int i = 0; i < nBoundaries; ++i)
+            {
+                size_t nBoundaryFaces = boundaryFacesSetIt->count;
+                faceTagIt = *boundaryFacesTagsSetIt;
+                
+                faceElementIndexIt = new size_t[nBoundaryFaces];
+                faceLocalIndexIt = new uint8_t[nBoundaryFaces];
+
+                boundaryFacesSetIt->elementIndexes = faceElementIndexIt;
+                boundaryFacesSetIt->localindexes = faceLocalIndexIt;
+
+
+
+                if (boundaryIt->condition.type == Boundary::Condition::Type::CONFORM_INTERFACE ||
+                    boundaryIt->condition.type == Boundary::Condition::Type::DIRICHLET ||
+                    boundaryIt->condition.type == Boundary::Condition::Type::NEWMAN)
+                {
+                    nEntityFacesNodes = nBoundaryFaces * constants::triangle::N_NODES;
+                    entityFacesNodes = new size_t[nEntityFacesNodes];
+                    entityFacesNodesIt = entityFacesNodes;
+
+                    for (size_t j = 0; j < nBoundaryFaces; ++j)
+                    {
+                        Map::Element<size_t, size_t>* faceIndexByFaceTagElement = faceIndexByFaceTag + *faceTagIt % nUniqueFaces;
+                        while (faceIndexByFaceTagElement->tag != *faceTagIt)
+                        {
+                            faceIndexByFaceTagElement = faceIndexByFaceTagElement->next;
+                        }
+
+                        *faceElementIndexIt = faceIndexByFaceTagElement->value / constants::tetrahedron::N_FACES;
+                        *faceLocalIndexIt = faceIndexByFaceTagElement->value % constants::tetrahedron::N_FACES;
+
+                        entityFacesNodesIt = std::copy_n(facesNodesTags[*faceElementIndexIt][*faceLocalIndexIt], constants::triangle::N_NODES, entityFacesNodesIt);
+
+                        ++faceElementIndexIt;
+                        ++faceLocalIndexIt;
+                        ++faceTagIt;
+                    }
+                    boundaryFacesSetIt->nodesTags = entityFacesNodes;
+                }
+                else
+                {
+                    for (size_t j = 0; j < nBoundaryFaces; ++j)
+                    {
+                        Map::Element<size_t, size_t>* faceIndexByFaceTagElement = faceIndexByFaceTag + *faceTagIt % nUniqueFaces;
+                        while (faceIndexByFaceTagElement->tag != *faceTagIt)
+                        {
+                            faceIndexByFaceTagElement = faceIndexByFaceTagElement->next;
+                        }
+
+                        *faceElementIndexIt = faceIndexByFaceTagElement->value / constants::tetrahedron::N_FACES;
+                        *faceLocalIndexIt = faceIndexByFaceTagElement->value % constants::tetrahedron::N_FACES;
+
+                        ++faceElementIndexIt;
+                        ++faceLocalIndexIt;
+                        ++faceTagIt;
+                    }
+                }
+
+                GMSHProxy::free(*boundaryFacesTagsSetIt);
+
+                ++boundaryFacesTagsSetIt;
+                ++boundaryIt;
+                ++boundaryFacesTagsSetIt;
+            }
+
+            GMSHProxy::free(facesNodesTags);
+            return nUniqueFaces;
+        }
 
         size_t createVolumeFacesEntities(const int volumeTag,
                                          const int boundariesTags[],
@@ -893,7 +1063,7 @@ namespace DTGeometryKernel
 
                         case 'C':
                         {
-                            *conditionTypeIt = BoundaryCondition::NONCONFORM_INTERAFACE;
+                            *conditionTypeIt = BoundaryCondition::NONCONFORM_INTERFACE;
                             break;
                         }
                         default:
@@ -963,7 +1133,7 @@ namespace DTGeometryKernel
 
                         case 'C':
                         {
-                            *conditionTypeIt = BoundaryCondition::NONCONFORM_INTERAFACE;
+                            *conditionTypeIt = BoundaryCondition::NONCONFORM_INTERFACE;
                             break;
                         }
                         default:

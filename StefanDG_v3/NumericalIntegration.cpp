@@ -1,4 +1,5 @@
 #include "NumericalIntegration.h"
+#include <cmath>
 
 namespace NumericalIntegration
 {
@@ -15,6 +16,39 @@ namespace NumericalIntegration
 													 {coord2, coord2, coord2} };
 
 		const double Gauss<2>::weights[] = { weight, weight, weight, weight };
+
+		double Gauss<2>::integrate(const double values[nSteps])
+		{
+			double sum = *values;
+			sum += *(++values);
+			sum += *(++values);
+			sum += *(++values);
+			return sum * weight;
+		}
+
+		double Gauss<2>::integrateProduct(const double multipliers1[nSteps], const double multipliers2[nSteps])
+		{
+			double sum = (*multipliers1) * (*multipliers2);
+			sum += (*(++multipliers1)) * (*(++multipliers2));
+			sum += (*(++multipliers1)) * (*(++multipliers2));
+			sum += (*(++multipliers1)) * (*(++multipliers2));
+
+			return sum * weight;
+		}
+
+		double Gauss<2>::integrateProduct(const Coordinates vectors1[nSteps], const Coordinates vectors2[nSteps])
+		{
+			double sum = vectors1->x * vectors2->x + vectors1->y * vectors2->y + vectors1->z * vectors2->z;
+			++vectors1;
+			++vectors2;
+
+			sum += vectors1->x * vectors2->x + vectors1->y * vectors2->y + vectors1->z * vectors2->z;
+			++vectors1;
+			++vectors2;
+
+			sum += vectors1->x * vectors2->x + vectors1->y * vectors2->y + vectors1->z * vectors2->z;
+			return sum * weight;
+		}
 	}
 
 	namespace Triangle
@@ -28,5 +62,41 @@ namespace NumericalIntegration
 													 {coord1, coord2}};
 
 		const double Gauss<2>::weights[] = { weight, weight, weight};
+
+		double Gauss<2>::integrate(const double values[nSteps])
+		{
+			double sum = *values;
+			sum += *(++values);
+			sum += *(++values);
+
+			return sum * weight;
+		}
+
+		double Gauss<2>::integrateProduct(const double multipliers1[nSteps], const double multipliers2[nSteps])
+		{
+			double sum = (*multipliers1) * (*multipliers2);
+			sum += (*(++multipliers1)) * (*(++multipliers2));
+			sum += (*(++multipliers1)) * (*(++multipliers2));
+
+			return sum * weight;
+		}
+
+		void Gauss<2>::changeValuesOrder(double values[nSteps], const uint8_t nodesChangins[constants::triangle::N_NODES])
+		{
+			uint8_t bufferIndex = *nodesChangins;
+			double bufferValue = values[bufferIndex];
+			values[bufferIndex] = *values;
+
+			bufferIndex = nodesChangins[bufferIndex];
+			values[0] = values[bufferIndex];
+			values[bufferIndex] = bufferValue;
+		}
+
+		void Gauss<2>::changeValuesOrder(const double values[nSteps], const uint8_t nodesChangins[constants::triangle::N_NODES], double outValues[nSteps])
+		{
+			outValues[*nodesChangins] = *values;
+			outValues[*(++nodesChangins)] = *(++values);
+			outValues[*(++nodesChangins)] = *(++values);
+		}
 	}
 }
