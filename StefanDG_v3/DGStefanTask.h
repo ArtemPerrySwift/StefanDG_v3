@@ -14,6 +14,7 @@
 #include "InterfaceSideElements.h"
 #include "Solution.h"
 #include "Map.h"
+#include <cstdlib>
 
 #include <stdexcept>
 #include <cinttypes>
@@ -44,8 +45,10 @@ public:
         Volume* volumes;
         NonconformInterface* nonconformInterfaces;
         unsigned int nVolumes, nNonconformInterafaces;
-
-        getModel(materialPhases, volumes, nVolumes, nonconformInterfaces, nNonconformInterafaces);
+        
+        Boundary::ConditionsSet conditionsSet;
+        getModel(materialPhases, volumes, nVolumes, conditionsSet, nonconformInterfaces);
+        unsigned int nNonconformInterafaces = conditionsSet.nNonconformInterfaces;
 
         ElementsAdjusmentsSet* volumesElementsAdjusmentsSets = new ElementsAdjusmentsSet[nVolumes];
         CrossElementsAdjusmentsSet* volumesElementsCrossAdjuesmentsSets = new CrossElementsAdjusmentsSet[nVolumes];
@@ -72,7 +75,6 @@ public:
 
         }
 
-
         delete[] volumes;
         delete[] nonconformInterfaces;
         delete[] volumesElementsAdjusmentsSets;
@@ -80,6 +82,9 @@ public:
         delete[] nonconformInterfacesAdjuesmentsSets;
         delete[] firstApproximationIt;
         delete[] nonconformalInterfaceSideElementsSets;
+        delete[] conditionsSet.valuesDirichlet;
+        delete[] conditionsSet.valuesNewman;
+        delete[] conditionsSet.nonconformInterfaces;
     }
 
 
@@ -122,14 +127,14 @@ private:
 
     void assignBoundaryConditionToGroupSurfaces(const int* surfacesTagIt,
                                                 const unsigned int nSurfaces,
-                                                const Boundary::Condition boundaryCondition,
-                                                Map::Element<int, Boundary::Condition>* conditionTypeByBoundaryTag,
+                                                const Boundary::ICondition *boundaryCondition,
+                                                Map::Element<int, const Boundary::ICondition*>* conditionTypeByBoundaryTag,
                                                 const unsigned int nMaxSurfaces)
     {
         for (unsigned int j = 0; j < nSurfaces; ++j)
         {
             const unsigned int hashIndex = *surfacesTagIt % nMaxSurfaces;
-            Map::Element<int, Boundary::Condition>* mapElement = conditionTypeByBoundaryTag + hashIndex;
+            Map::Element<int, const Boundary::ICondition*>* mapElement = conditionTypeByBoundaryTag + hashIndex;
 
             if (mapElement->tag == 0)
             {
@@ -145,7 +150,7 @@ private:
                     mapElement = mapElement->next;
                 }
 
-                mapElement->next = new Map::Element<int, Boundary::Condition>(*surfacesTagIt, boundaryCondition);
+                mapElement->next = new Map::Element<int, const Boundary::ICondition*>(*surfacesTagIt, boundaryCondition);
             }
 
             ++surfacesTagIt;
@@ -163,17 +168,90 @@ private:
         return index;
     }
 
-    unsigned int determineExplicitBoundariesConditions(Map::Element<int, Boundary::Condition>* conditionTypeByBoundaryTag,
-                                                       const unsigned int nSurfaces,
-                                                       unsigned int &nNonconformalGroups)
+    unsigned int determineBoundariesConditions(Map::Element<int, const Boundary::ICondition*>* &conditionTypeByBoundaryTag,
+                                               unsigned int &nSurfaces,
+                                               Boundary::ConditionsSet& conditionsSet)
     {
         int* physicalDimTags;
         unsigned int nPhysicalGroups;
         GMSHProxy::model::getPhysicalGroups(physicalDimTags, nPhysicalGroups, constants::DIMENSION_2D);
 
-        nNonconformalGroups = 0;
+        char** physicalNames = new char*[nPhysicalGroups];
+
+        unsigned int iValueDirichlet = 0;
+        unsigned int iValueNewman = 0;
+        unsigned int iNonconformInterface = 0;
+
         unsigned int nProcessedSurfaces = 0;
+
         const int* physicalDimTagIt = physicalDimTags;
+        char** physicalNameIt = physicalNames;
+        for (unsigned int i = 0; i < nPhysicalGroups; ++i)
+        {
+            ++physicalDimTagIt;
+            GMSHProxy::model::getPhysicalName(constants::DIMENSION_2D, *physicalDimTagIt, *physicalNameIt);
+            char* physicalNameCharIt = *physicalNameIt;
+            
+            switch (*physicalNameCharIt)
+            {
+            case 'D':
+            {
+                ++physicalNameCharIt;
+                if (*physicalNameCharIt == 'V')
+                {
+                    ++iValueDirichlet;
+                }
+                break;
+            }
+            case 'N':
+            {
+                ++physicalNameCharIt;
+                if (*physicalNameCharIt == 'V')
+                {
+                    ++iValueNewman;
+                }
+                break;
+            }
+            case 'C':
+            {
+                ++physicalNameCharIt;
+                ++iNonconformInterface;
+                break;
+            }
+            case 'S':
+            {
+                break;
+            }
+            default:
+            {
+                throw std::runtime_error("Unknown type of condition");
+            }
+            }
+            ++physicalDimTagIt;
+            ++physicalNameIt;
+        }
+
+        GMSHProxy::free(physicalDimTags);
+
+        Boundary::Condition<Boundary::ICondition::Type::DIRICHLET_VALUE>* valueDirichletIt = new Boundary::Condition<Boundary::ICondition::Type::DIRICHLET_VALUE>[iValueDirichlet];
+        Boundary::Condition<Boundary::ICondition::Type::NEWMAN_VALUE>* valueNewmanIt = new Boundary::Condition<Boundary::ICondition::Type::NEWMAN_VALUE>[iValueNewman];
+        Boundary::Condition<Boundary::ICondition::Type::NONCONFORM_INTERFACE>* nonconformInterfaceIt = new Boundary::Condition<Boundary::ICondition::Type::NONCONFORM_INTERFACE>[iNonconformInterface];
+        
+        conditionsSet.valuesDirichlet = valueDirichletIt;
+        conditionsSet.nValuesDirichlet = iValueDirichlet;
+        conditionsSet.valuesNewman = valueNewmanIt;
+        conditionsSet.nValuesNewman = iValueNewman;
+        conditionsSet.nonconformInterfaces = nonconformInterfaceIt;
+        conditionsSet.nNonconformInterfaces = iNonconformInterface;
+
+        int* surfacesDimTags;
+        GMSHProxy::model::getEntities(surfacesDimTags, nSurfaces, constants::DIMENSION_2D);
+        conditionTypeByBoundaryTag = new Map::Element<int, const Boundary::ICondition*>[nSurfaces];
+
+        physicalDimTagIt = physicalDimTags;
+        physicalNameIt = physicalNames;
+
+        const Boundary::ICondition* condition;
         for (unsigned int i = 0; i < nPhysicalGroups; ++i)
         {
             ++physicalDimTagIt;
@@ -182,66 +260,163 @@ private:
             size_t nGroupSurfaces;
             GMSHProxy::model::getEntitiesForPhysicalGroup(constants::DIMENSION_2D, *physicalDimTagIt, groupSurfacesTags, nGroupSurfaces);
 
-            Boundary::Condition boundaryCondition;
-
-            char* physicalName;
-            GMSHProxy::model::getPhysicalName(constants::DIMENSION_2D, *physicalDimTagIt, physicalName);
-            
-            switch (*physicalName)
+            char* physicalNameCharIt = *physicalNameIt;
+            switch (*physicalNameCharIt)
             {
             case 'D':
             {
-                boundaryCondition.type = Boundary::Condition::Type::DIRICHLET;
-                boundaryCondition.index = getConditionIndex(physicalName + 1);
+                ++physicalNameCharIt;
+                if (*physicalNameCharIt == ':')
+                {
+                    ++physicalNameCharIt;
+
+                    char* endptr;
+                    double value = strtod(physicalNameCharIt, &endptr);
+                    if (endptr == physicalNameCharIt)
+                    {
+                        throw std::runtime_error("Dirichlet value is not set in physical name");
+                    }
+                    
+                    valueDirichletIt->value = value;
+                    condition = valueDirichletIt;
+                    ++valueDirichletIt;
+                }
+                else
+                {
+                    condition = &Boundary::ConditionsSet::dirichletFunctionCondition;
+                }
                 break;
             }
             case 'N':
             {
-                boundaryCondition.type = Boundary::Condition::Type::NEWMAN;
-                boundaryCondition.index = getConditionIndex(physicalName + 1);
+                ++physicalNameCharIt;
+                if (*physicalNameCharIt == ':')
+                {
+                    ++physicalNameCharIt;
+                    char* endptr;
+                    double value = strtod(physicalNameCharIt, &endptr);
+                    if (endptr == physicalNameCharIt)
+                    {
+                        throw std::runtime_error("Newman value is not set in physical name");
+                    }
+                    valueNewmanIt->value = value;
+                    condition = valueNewmanIt;
+                    ++valueNewmanIt;
+                }
+                else
+                {
+                    condition = &Boundary::ConditionsSet::newmanFunctionCondition;
+                }
                 break;
             }
             case 'C':
             {
+                ++iNonconformInterface;
                 if (nGroupSurfaces != 2)
                 {
                     throw std::runtime_error("Each condition of nonconformity should include only 2 surfaces");
                 }
-
-                boundaryCondition.type = Boundary::Condition::Type::NONCONFORM_INTERFACE;
-                boundaryCondition.index = nNonconformalGroups;
-                ++nNonconformalGroups;
+                nonconformInterfaceIt->index = iNonconformInterface;
+                condition = nonconformInterfaceIt;
+                ++iNonconformInterface;
+                ++nonconformInterfaceIt;
                 break;
             }
+            case 'S':
+            {
+                ++physicalNameCharIt;
+                if (*physicalNameCharIt == ':')
+                {
+                    ++physicalNameCharIt;
+
+                    char* endptr;
+                    double value = strtod(physicalNameCharIt, &endptr);
+                    if (endptr == physicalNameCharIt)
+                    {
+                        throw std::runtime_error("Stefan value is not set in physical name");
+                    }
+
+                    conditionsSet.stefan.value = value;
+                    condition = &conditionsSet.stefan;
+                }
+                else
+                {
+                    throw std::runtime_error("Stefan name should contain \':\' after \'S\'");
+                }
+                break;
+            }
+
             default:
             {
                 throw std::runtime_error("Unknown type of condition");
             }
             }
 
-            GMSHProxy::free(physicalName);
-
             nProcessedSurfaces += nGroupSurfaces;
-            assignBoundaryConditionToGroupSurfaces(groupSurfacesTags, nGroupSurfaces, boundaryCondition, conditionTypeByBoundaryTag, nSurfaces);
+            assignBoundaryConditionToGroupSurfaces(groupSurfacesTags, nGroupSurfaces, condition, conditionTypeByBoundaryTag, nSurfaces);
 
             GMSHProxy::free(groupSurfacesTags);
-            ++physicalDimTagIt;
+            ++physicalNameIt;
+        }
+        condition = &Boundary::ConditionsSet::homogeneousNewmanCondition;
+        if (nProcessedSurfaces != nSurfaces)
+        {
+            const int* surfaceDimTagIt;
+            for (unsigned int i = 0; i < nSurfaces; ++i)
+            {
+                ++surfaceDimTagIt;
+                Map::Element<int, const Boundary::ICondition*>* mapElement = conditionTypeByBoundaryTag + (*surfaceDimTagIt) % nSurfaces;
+
+                if (mapElement->tag != *surfaceDimTagIt)
+                {
+                    if (mapElement->tag == 0)
+                    {
+                        mapElement->tag = *surfaceDimTagIt;
+                        mapElement->value = condition;
+                        return;
+                    }
+                    else
+                    {
+                        while (mapElement->next != nullptr && mapElement->tag != *surfaceDimTagIt)
+                        {
+                            mapElement = mapElement->next;
+                        }
+
+                        if (mapElement->tag != *surfaceDimTagIt)
+                        {
+                            mapElement->tag = *surfaceDimTagIt;
+                            mapElement->value = condition;
+
+                        }
+
+                    }
+                }
+
+                ++surfaceDimTagIt;
+            }
         }
 
-        GMSHProxy::free(physicalDimTags);
+        GMSHProxy::free(surfacesDimTags);
 
         return nProcessedSurfaces;
     }
-
+    /*
     void determineImplicitBoundariesConditions(const int* surfaceDimTagIt,
                                                const unsigned int nSurfaces,
-                                               Map::Element<int, Boundary::Condition>* conditionTypeByBoundaryTag)
+                                               const unsigned int nUnprocessedSurfaces,
+                                               Map::Element<int, const Boundary::ICondition*>* conditionTypeByBoundaryTag,
+                                               const Boundary::ICondition**& implicitConditions,
+                                               unsigned int &nImplicitConditions)
     {
+        const Boundary::ICondition* homogeneousNewmanCondition = new Boundary::Condition<Boundary::ICondition::Type::HOMOGENEOUS_NEWMAN>();
+        const Boundary::ICondition** implicitConditionsBuffer = new const Boundary::ICondition*[nUnprocessedSurfaces];
+
+        const Boundary::ICondition** implicitConditionIt = implicitConditionsBuffer;
         unsigned int nConformInterafces = 0;
         for (unsigned int i = 0; i < nSurfaces; ++i)
         {
             ++surfaceDimTagIt;
-            Map::Element<int, Boundary::Condition>* mapElement = conditionTypeByBoundaryTag + (*surfaceDimTagIt) % nSurfaces;
+            Map::Element<int, const Boundary::ICondition*>* mapElement = conditionTypeByBoundaryTag + (*surfaceDimTagIt) % nSurfaces;
 
             if (mapElement->tag != *surfaceDimTagIt)
             {
@@ -256,12 +431,14 @@ private:
 
                     if (nUpEntities == 2)
                     {
-                        mapElement->value = { Boundary::Condition::Type::HOMOGENEOUS_NEWMAN, 0 };
+                        *implicitConditionIt = new Boundary::Condition<Boundary::ICondition::Type::CONFORM_INTERFACE>(nConformInterafces);
+                        mapElement->value = *implicitConditionIt;
+                        ++implicitConditionIt;
+                        ++nConformInterafces;
                     }
                     else
                     {
-                        mapElement->value = { Boundary::Condition::Type::HOMOGENEOUS_NEWMAN, nConformInterafces };
-                        ++nConformInterafces;
+                        mapElement->value = homogeneousNewmanCondition;
                     }
                     return;
                 }
@@ -281,12 +458,14 @@ private:
 
                         if (nUpEntities == 2)
                         {
-                            mapElement->next = new Map::Element<int, Boundary::Condition>(*surfaceDimTagIt, { Boundary::Condition::Type::HOMOGENEOUS_NEWMAN, 0 });
+                            *implicitConditionIt = new Boundary::Condition<Boundary::ICondition::Type::CONFORM_INTERFACE>(nConformInterafces);
+                            mapElement->value = *implicitConditionIt;
+                            ++implicitConditionIt;
+                            ++nConformInterafces;
                         }
                         else
                         {
-                            mapElement->next = new Map::Element<int, Boundary::Condition>(*surfaceDimTagIt, { Boundary::Condition::Type::HOMOGENEOUS_NEWMAN, nConformInterafces });
-                            ++nConformInterafces;
+                            mapElement->value = homogeneousNewmanCondition;
                         }
                         
                     }
@@ -296,8 +475,25 @@ private:
 
             ++surfaceDimTagIt;
         }
-    }
 
+        unsigned int nImplicitConditions = nConformInterafces ;
+        implicitConditions = new const Boundary::ICondition*[nConformInterafces];
+
+        const Boundary::ICondition** implicitConditionsIt = implicitConditions;
+        *implicitConditionsIt = homogeneousNewmanCondition;
+        ++implicitConditionsIt;
+        implicitConditionIt = implicitConditionsBuffer;
+
+        implicitConditionIt = 
+
+        for (unsigned int i = 0; i < nConformInterafces; ++i)
+        {
+
+        }
+    }
+    */
+
+    /*
     void determineBoundariesConditions(Map::Element<int, Boundary::Condition>* &conditionTypeByBoundaryTag, unsigned int &nSurfaces, unsigned int &nNonconformalGroups)
     {
         int* surfacesDimTags;
@@ -311,6 +507,7 @@ private:
 
         GMSHProxy::free(surfacesDimTags);
     }
+    */
 
     unsigned int determineVolumesMaterialPhase(const MaterialPhase* materialPhasePtr, Map::Element<int, const MaterialPhase*>* materialPhasePtrByVolumeTag, const unsigned int nVolumes)
     {
@@ -355,15 +552,19 @@ private:
         }
     }
 
-    void getModel(const MaterialPhase materialPhases[2], Volume*& volumes, unsigned int& nVolumes, NonconformInterface*& nonconformInterfaces, unsigned int& nNonconformInterafaces)
+    void getModel(const MaterialPhase materialPhases[2],
+                  Volume*& volumes,
+                  unsigned int& nVolumes,
+                  Boundary::ConditionsSet& conditionsSet,
+                  NonconformInterface*& nonconformInterfaces)
     {
-        Map::Element<int, Boundary::Condition>* conditionTypeByBoundaryTag;
+        Map::Element<int, const Boundary::ICondition*>* conditionTypeByBoundaryTag;
         unsigned int nSurfaces;
 
-        determineBoundariesConditions(conditionTypeByBoundaryTag, nSurfaces, nNonconformInterafaces);
+        determineBoundariesConditions(conditionTypeByBoundaryTag, nSurfaces, conditionsSet);
 
-        nonconformInterfaces = new NonconformInterface[nNonconformInterafaces];
-        bool* wasNonconfromInterfaceProcessed = new bool[nNonconformInterafaces]{};
+        nonconformInterfaces = new NonconformInterface[conditionsSet.nNonconformInterfaces];
+        bool* wasNonconfromInterfaceProcessed = new bool[conditionsSet.nNonconformInterfaces]{};
 
         int* volumesDimTags;
         GMSHProxy::model::getEntities(volumesDimTags, nVolumes, constants::DIMENSION_3D);
@@ -395,10 +596,11 @@ private:
                 boundaryIt->condition = Map::getExistedValue(boundaryTag, conditionTypeByBoundaryTag + boundaryTag % nSurfaces);
                 boundaryIt->isPlane = GMSHProxy::model::isSurfacePlane(boundaryTag);
 
-                if (boundaryIt->condition.type == Boundary::Condition::Type::NONCONFORM_INTERFACE)
+                if (boundaryIt->condition->type == Boundary::ICondition::Type::NONCONFORM_INTERFACE)
                 {
-                    NonconformInterface* nonconformInterface = nonconformInterfaces + boundaryIt->condition.index;
-                    if (wasNonconfromInterfaceProcessed[boundaryIt->condition.index])
+                    Boundary::Condition<Boundary::ICondition::Type::NONCONFORM_INTERFACE>* nonconformCondition = (Boundary::Condition<Boundary::ICondition::Type::NONCONFORM_INTERFACE>*)boundaryIt->condition;
+                    NonconformInterface* nonconformInterface = nonconformInterfaces + nonconformCondition->index;
+                    if (wasNonconfromInterfaceProcessed[nonconformCondition->index])
                     {
                         nonconformInterface->sidesTags[1] = boundaryTag;
                         nonconformInterface->volumesIndexes[1] = i;

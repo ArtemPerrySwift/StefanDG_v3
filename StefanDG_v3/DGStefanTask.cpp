@@ -992,85 +992,47 @@ void processVolumes(const Volume* volumeIt,
         const size_t** boundaryFacesTetrahedronsIndexesIt = boundariesFacesTetrahedronsIndexes;
         const uint8_t** boundaryFacesLocalIndexesIt = boundariesFacesLocalIndexes;
 
-        const BoundaryCondition* boundaryConditionIt = volumeIt->boundariesConditions;
+        const Boundary* boundaryIt = volumeIt->boundaries;
 
         for (size_t j = 0; j < volumeIt->nBoundaries; ++j)
         {
-            switch (*boundaryConditionIt)
+            switch (boundaryIt->condition->type)
             {
-            case BoundaryCondition::DIRICHLET:
+            case Boundary::ICondition::Type::DIRICHLET_FUNCTION :
             {
-                char* surfaceType;
-                GMSHProxy::model::getSurafceType(*boundariesTagIt, surfaceType);
-
-                if (strcmp(surfaceType, "Plane"))
-                {
-                    computeDirichletFacesAdjusments(*boundaryFacesEntityTagIt,
-                        *boundaryFacesTetrahedronsIndexesIt,
-                        *boundaryFacesLocalIndexesIt,
-                        localJacobianMatrixes,
-                        dirichletCondition,
-                        volumeIt->materialPhasePtr->thermalConductivity,
-                        bilinearElementsAdjusments,
-                        linearElementsAdjusments);
-                }
-                else
-                {
-                    size_t faceNodesIndexes[constants::tetrahedron::N_FACES * constants::triangle::N_NODES];
-                    DTGeometryKernel::extractFaceNodesTags(tetrahedronsNodesTags[**boundaryFacesTetrahedronsIndexesIt], **boundaryFacesLocalIndexesIt, faceNodesIndexes);
-
-                    Coordinates faceNodes[constants::triangle::N_NODES];
-                    GMSHProxy::model::mesh::get3Nodes(faceNodesIndexes, faceNodes);
-
-                    Coordinates normal;
-                    CoordinatesFunctions::computeNormal(faceNodes, normal);
-
-                    computeDirichletFacesAdjusments(*boundaryFacesEntityTagIt,
-                        *boundaryFacesTetrahedronsIndexesIt,
-                        *boundaryFacesLocalIndexesIt,
-                        normal,
-                        localJacobianMatrixes,
-                        dirichletCondition,
-                        volumeIt->materialPhasePtr->thermalConductivity,
-                        bilinearElementsAdjusments,
-                        linearElementsAdjusments);
-
-                }
-
-                GMSHProxy::free(surfaceType);
-
-                break;
-
-            }
-
-            case BoundaryCondition::NEWMAN:
-            {
-                computeNewmanFacesAdjusments(*boundaryFacesEntityTagIt,
-                    *boundaryFacesTetrahedronsIndexesIt,
-                    *boundaryFacesLocalIndexesIt,
-                    newmanCondition,
-                    linearElementsAdjusments);
                 break;
             }
 
-            case BoundaryCondition::NONCONFORM_INTERFACE:
+            case Boundary::ICondition::Type::DIRICHLET_VALUE:
             {
-                double (*boundaryTetrahedronsLocalJacobians)[LocalCoordinates3D::COUNT * Coordinates::COUNT] = new double[nBoundariesFaces[j]][LocalCoordinates3D::COUNT * Coordinates::COUNT];
-                Coordinates* boundaryTetrahedronsInitPoints = new Coordinates[nBoundariesFaces[j]];
-                DTGeometryKernel::extractBoundaryTetrahedrons(localJacobianMatrixes, elementsInitPoints, *boundaryFacesTetrahedronsIndexesIt, nBoundariesFaces[j], boundaryTetrahedronsLocalJacobians, boundaryTetrahedronsInitPoints);
-
-                interfaceSideElementsIt->indexes = *boundaryFacesTetrahedronsIndexesIt;
-                interfaceSideElementsIt->localJacobians = boundaryTetrahedronsLocalJacobians;
-                interfaceSideElementsIt->initPoints = boundaryTetrahedronsInitPoints;
-                interfaceSideElementsIt->facesLocalIndexes = *boundaryFacesLocalIndexesIt;
-
-                *boundaryFacesTetrahedronsIndexesIt = nullptr;
-                *boundaryFacesLocalIndexesIt = nullptr;
-
-                ++interfaceSideElementsIt;
-
                 break;
             }
+
+            case Boundary::ICondition::Type::NEWMAN_FUNCTION:
+            {
+                break;
+            }
+
+            case Boundary::ICondition::Type::NEWMAN_VALUE:
+            {
+                break;
+            }
+
+            case Boundary::ICondition::Type::STEFAN :
+            {
+                break;
+            }
+
+            case Boundary::ICondition::Type::NONCONFORM_INTERFACE:
+            {
+                break;
+            }
+
+            case Boundary::ICondition::Type::HOMOGENEOUS_NEWMAN:
+            {
+                break;
+            }
+
             }
 
             delete[] * boundaryFacesTetrahedronsIndexesIt;
