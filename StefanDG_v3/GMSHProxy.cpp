@@ -221,6 +221,46 @@ namespace GMSHProxy
             gmshFree(dimTags);
         }
 
+        void getVolumes(int*& volumesDimTags, unsigned int& nVolumes, int* &boundariesDimTags, unsigned int*& volumesBoundariesCounts, unsigned int& nBoundaries)
+        {
+            int ierr;
+            int* volumeDimTagIt;
+            size_t nVolumesDimTags;
+            gmshModelGetEntities(&volumeDimTagIt, &nVolumesDimTags, constants::DIMENSION_3D, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            volumesDimTags = volumeDimTagIt;
+            nVolumes = nVolumesDimTags / 2;
+            size_t nBoundariesDimTags;
+            gmshModelGetBoundary(volumeDimTagIt, nVolumesDimTags, &boundariesDimTags, &nBoundariesDimTags, FALSE_C, FALSE_C, FALSE_C, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            nBoundaries = nBoundariesDimTags / 2;
+            unsigned int* volumeBoundariesCountIt = (unsigned int*)gmshMalloc(nVolumes * sizeof(unsigned int));
+
+            volumesBoundariesCounts = volumeBoundariesCountIt;
+            int* volumeBoundariesDimTag;
+            for (unsigned int i = 0; i < nVolumes; ++i)
+            {
+                gmshModelGetBoundary(volumeDimTagIt, 2, &volumeBoundariesDimTag, &nBoundariesDimTags, FALSE_C, FALSE_C, FALSE_C, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+                gmshFree(volumeBoundariesDimTag);
+
+                *volumeBoundariesCountIt = nBoundariesDimTags / 2;
+                ++volumeBoundariesCountIt;
+            }
+            
+        }
+
         void getSurfaceUpEntities(const int surfaceTag, int*& upEntitiesTags, size_t &nUpEntities)
         {
             int* downEntitiesTags;
@@ -510,6 +550,17 @@ namespace GMSHProxy
         {
             int ierr;
             gmshModelRemoveEntities(dimTags, nDimTags, recursive, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+        }
+
+        void remove2DEntity(const int tag)
+        {
+            int dimTag[] = { constants::DIMENSION_2D, tag };
+            int ierr;
+            gmshModelRemoveEntities(dimTag, 2, FALSE_C, &ierr);
             if (ierr)
             {
                 throwLastError();
@@ -837,6 +888,20 @@ namespace GMSHProxy
                 tetrahedronsNodesTags = (size_t(*)[constants::tetrahedron::N_NODES])nodesTags;
             }
 
+            void getTetrahedrons(size_t*& tetrahedronsTags, size_t& nTetrahedrons,const int tag)
+            {
+                int ierr;
+                size_t nNodes;
+                size_t* nodesTags;
+                gmshModelMeshGetElementsByType(TETRAHEDRON_TYPE, &tetrahedronsTags, &nTetrahedrons, &nodesTags, &nNodes, tag, TASK_DEFAULT, N_TASK_DEFAULT, &ierr);
+
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                gmshFree(nodesTags);
+            }
 
             void getFacesByElements(const int elementType, const int faceType, size_t** nodesTags, size_t* nNodesTags, const int entityTag)
             {

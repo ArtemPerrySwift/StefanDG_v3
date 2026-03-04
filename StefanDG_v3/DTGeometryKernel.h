@@ -79,5 +79,9 @@ namespace DTGeometryKernel
                                     double nativeJacobianMatrix[Coordinates::COUNT * LocalCoordinates3D::COUNT]);
 
     uint8_t getClosestNodeIndex(const Coordinates& node, const size_t* nodeTagIt, const uint8_t nNodes);
+
+    bool computeChangingIndexes(const size_t original[constants::triangle::N_NODES],
+                                const size_t comparison[constants::triangle::N_NODES],
+                                uint8_t changingIndexes[constants::triangle::N_NODES]);
 };
 

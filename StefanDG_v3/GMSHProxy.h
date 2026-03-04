@@ -43,6 +43,7 @@ namespace GMSHProxy
         void getEntities(int* &dimTags, size_t &nEntities, const int dim = DEFAULT_DIM);
         void getEntities(int*& dimTags, unsigned int& nEntities, const int dim = DEFAULT_DIM);
         void getEntities(const int dim, int** tags, size_t* nEntities);
+        void getVolumes(int*& volumesDimTags, unsigned int& nVolumes, int*& boundariesDimTags, unsigned int*& volumesBoundariesCounts, unsigned int& nBoundaries);
         void getSurfaceUpEntities(const int surfaceTag, int*& upEntitiesTags, size_t& nUpEntities);
         void getPhysicalGroupsForEntity(const int dim, const int entityTag, int* &physicalTags, size_t &nPhysicalGroups);
         void getBoundaries(const int entityDim, const int entityTag, int*& boundariesDimTags, size_t& nBoundariesDimTags);
@@ -66,6 +67,7 @@ namespace GMSHProxy
         void setCurrent(const char modleName[]);
         void remove();
         void removeEntities(const int* dimTags, const size_t nDimTags, bool recursive = false);
+        void remove2DEntity(const int tag);
         void remove2DEntities(const int* tags, const size_t nTags, bool recursive = false);
 
         void extractTags(const int* dimTagIt, const size_t nTags, int* tagIt);
@@ -125,12 +127,8 @@ namespace GMSHProxy
                 const size_t task = TASK_DEFAULT,
                 const size_t nTasks = N_TASK_DEFAULT);
 
-            void getTetrahedrons(size_t*& tetrahedronsTags,
-                size_t& nTetrahedrons,
-                size_t(*&tetrahedronsNodesTags)[constants::tetrahedron::N_NODES],
-                const int tag = DEFAULT_TAG,
-                const size_t task = TASK_DEFAULT,
-                const size_t nTasks = N_TASK_DEFAULT);
+            void getTetrahedrons(size_t*& tetrahedronsTags, size_t& nTetrahedrons, const int tag);
+
 
 
             void getFacesByElements(const int elementType, const int faceType, size_t** nodesTags, size_t* nNodesTags, const int entityTag = DEFAULT_TAG);

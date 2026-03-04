@@ -835,11 +835,54 @@ namespace DTGeometryKernel
                 boundaryFacesSetIt->elementIndexes = faceElementIndexIt;
                 boundaryFacesSetIt->localindexes = faceLocalIndexIt;
 
+                switch (boundaryIt->condition->type)
+                {
+                case Boundary::ICondition::Type::DIRICHLET_VALUE:
+                case Boundary::ICondition::Type::NEWMAN_VALUE:
+                case Boundary::ICondition::Type::STEFAN:
+                case Boundary::ICondition::Type::HOMOGENEOUS_NEWMAN:
+                case Boundary::ICondition::Type::NONCONFORM_INTERFACE:
+                {
+                    if (nBoundaryFaces == 0)
+                    {
+                        continue;
+                    }
+
+                    Map::Element<size_t, size_t>* faceIndexByFaceTagElement = faceIndexByFaceTag + *faceTagIt % nUniqueFaces;
+                    while (faceIndexByFaceTagElement->tag != *faceTagIt)
+                    {
+                        faceIndexByFaceTagElement = faceIndexByFaceTagElement->next;
+                    }
+
+                    *faceElementIndexIt = faceIndexByFaceTagElement->value / constants::tetrahedron::N_FACES;
+                    *faceLocalIndexIt = faceIndexByFaceTagElement->value % constants::tetrahedron::N_FACES;
+
+                    entityFacesNodes = new size_t[constants::triangle::N_NODES];
+                    std::copy_n(facesNodesTags[*faceElementIndexIt][*faceLocalIndexIt], constants::triangle::N_NODES, entityFacesNodes);
+                    boundaryFacesSetIt->nodesTags = entityFacesNodes;
+
+                    ++faceElementIndexIt;
+                    ++faceLocalIndexIt;
+                    ++faceTagIt;
+
+                    for (size_t j = 1; j < nBoundaryFaces; ++j)
+                    {
+                        Map::Element<size_t, size_t>* faceIndexByFaceTagElement = faceIndexByFaceTag + *faceTagIt % nUniqueFaces;
+                        while (faceIndexByFaceTagElement->tag != *faceTagIt)
+                        {
+                            faceIndexByFaceTagElement = faceIndexByFaceTagElement->next;
+                        }
+
+                        *faceElementIndexIt = faceIndexByFaceTagElement->value / constants::tetrahedron::N_FACES;
+                        *faceLocalIndexIt = faceIndexByFaceTagElement->value % constants::tetrahedron::N_FACES;
 
 
-                if (boundaryIt->condition.type == Boundary::Condition::Type::CONFORM_INTERFACE ||
-                    boundaryIt->condition.type == Boundary::Condition::Type::DIRICHLET ||
-                    boundaryIt->condition.type == Boundary::Condition::Type::NEWMAN)
+                        ++faceElementIndexIt;
+                        ++faceLocalIndexIt;
+                        ++faceTagIt;
+                    }
+                }
+                default:
                 {
                     nEntityFacesNodes = nBoundaryFaces * constants::triangle::N_NODES;
                     entityFacesNodes = new size_t[nEntityFacesNodes];
@@ -862,25 +905,9 @@ namespace DTGeometryKernel
                         ++faceLocalIndexIt;
                         ++faceTagIt;
                     }
+
                     boundaryFacesSetIt->nodesTags = entityFacesNodes;
                 }
-                else
-                {
-                    for (size_t j = 0; j < nBoundaryFaces; ++j)
-                    {
-                        Map::Element<size_t, size_t>* faceIndexByFaceTagElement = faceIndexByFaceTag + *faceTagIt % nUniqueFaces;
-                        while (faceIndexByFaceTagElement->tag != *faceTagIt)
-                        {
-                            faceIndexByFaceTagElement = faceIndexByFaceTagElement->next;
-                        }
-
-                        *faceElementIndexIt = faceIndexByFaceTagElement->value / constants::tetrahedron::N_FACES;
-                        *faceLocalIndexIt = faceIndexByFaceTagElement->value % constants::tetrahedron::N_FACES;
-
-                        ++faceElementIndexIt;
-                        ++faceLocalIndexIt;
-                        ++faceTagIt;
-                    }
                 }
 
                 GMSHProxy::free(*boundaryFacesTagsSetIt);
@@ -1386,5 +1413,71 @@ namespace DTGeometryKernel
         {
             delete[] *facesPoints;
             gmshFree(weights);
+        }
+
+        bool computeChangingIndexes(const size_t original[constants::triangle::N_NODES], const size_t comparison[constants::triangle::N_NODES], uint8_t changingIndexes[constants::triangle::N_NODES])
+        {
+            if (*original == *comparison)
+            {
+                *changingIndexes = 0;
+
+                ++original;
+                ++comparison;
+                ++changingIndexes;
+                if (*original == *comparison)
+                {
+                    *changingIndexes = 1;
+                    ++*changingIndexes;
+                    *changingIndexes = 2;
+                    return false;
+                }
+
+                *changingIndexes = 2;
+                ++*changingIndexes;
+                *changingIndexes = 1;
+                return true;
+            }
+            
+            ++comparison;
+            if (*original == *comparison)
+            {
+                *changingIndexes = 1;
+                ++original;
+                ++comparison;
+                ++changingIndexes;
+
+                if (*original == *comparison)
+                {
+                    *changingIndexes = 2;
+                    ++*changingIndexes;
+                    *changingIndexes = 0;
+                    return true;
+                }
+
+                *changingIndexes = 0;
+                ++*changingIndexes;
+                *changingIndexes = 2;
+
+                return true;
+                
+            }
+            
+            *changingIndexes = 2;
+            ++changingIndexes;
+            ++original;
+            if (*original == *comparison)
+            {
+                *changingIndexes = 1;
+                ++*changingIndexes;
+                *changingIndexes = 0;
+
+                return true;
+            }
+
+            *changingIndexes = 0;
+            ++*changingIndexes;
+            *changingIndexes = 1;
+            
+            return true;
         }
 };

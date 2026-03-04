@@ -6,7 +6,7 @@ struct Volume
 {
 	int tag;
 	const MaterialPhase* materialPhasePtr;
-	Boundary* boundaries;
+	const Boundary* boundaries;
 	//const int* boundariesTags;
 	//const BoundaryCondition* boundariesConditions;
 	unsigned int nBoundaries;

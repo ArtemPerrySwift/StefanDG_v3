@@ -44,10 +44,11 @@ public:
     {
         Volume* volumes;
         NonconformInterface* nonconformInterfaces;
-        unsigned int nVolumes, nNonconformInterafaces;
+        unsigned int nVolumes;
         
+        Boundary* boundaries;
         Boundary::ConditionsSet conditionsSet;
-        getModel(materialPhases, volumes, nVolumes, conditionsSet, nonconformInterfaces);
+        getModel(materialPhases, volumes, nVolumes, boundaries, conditionsSet, nonconformInterfaces);
         unsigned int nNonconformInterafaces = conditionsSet.nNonconformInterfaces;
 
         ElementsAdjusmentsSet* volumesElementsAdjusmentsSets = new ElementsAdjusmentsSet[nVolumes];
@@ -555,6 +556,7 @@ private:
     void getModel(const MaterialPhase materialPhases[2],
                   Volume*& volumes,
                   unsigned int& nVolumes,
+                  Boundary* &boundaries,
                   Boundary::ConditionsSet& conditionsSet,
                   NonconformInterface*& nonconformInterfaces)
     {
@@ -567,31 +569,37 @@ private:
         bool* wasNonconfromInterfaceProcessed = new bool[conditionsSet.nNonconformInterfaces]{};
 
         int* volumesDimTags;
-        GMSHProxy::model::getEntities(volumesDimTags, nVolumes, constants::DIMENSION_3D);
+        int* boundariesDimTags;
+        unsigned int* volumesBoundariesCounts;
+        unsigned int nBoundaries;
+        GMSHProxy::model::getVolumes(volumesDimTags, nVolumes, boundariesDimTags, volumesBoundariesCounts, nBoundaries);
+        //GMSHProxy::model::getEntities(volumesDimTags, nVolumes, constants::DIMENSION_3D);
 
-        volumes = new Volume[nVolumes];
+        Volume* volumeIt = new Volume[nVolumes];
+        volumes = volumeIt;
+
         Map::Element<int, const MaterialPhase*>* materialPhaseByVolumeTag = new Map::Element<int, const MaterialPhase*>[nVolumes];
         determineVolumesMaterialPhases(materialPhases, materialPhaseByVolumeTag, nVolumes);
 
+        Boundary* boundaryIt = new Boundary[nBoundaries];
+        boundaries = boundaryIt;
+
+        const int* boundaryDimTagIt = boundariesDimTags;
         const int* volumesDimTagsIt = volumesDimTags;
-        Volume* volumeIt = volumes;
+        const unsigned int* nVolumeBoundariesIt = volumesBoundariesCounts;
+
         for (unsigned int i = 0; i < nVolumes; ++i)
         {
             ++volumesDimTagsIt;
             volumeIt->tag = *volumesDimTagsIt;
             volumeIt->materialPhasePtr = Map::getExistedValue(*volumesDimTagsIt, materialPhaseByVolumeTag + volumeIt->tag % nVolumes);
+            volumeIt->boundaries = boundaryIt;
 
-            int* boundariesDimTags;
-            unsigned int nBoundaries;
-            GMSHProxy::model::getBoundaries(constants::DIMENSION_3D, volumeIt->tag, boundariesDimTags, nBoundaries);
-            volumeIt->boundaries = new Boundary[nBoundaries];
-
-            const int* boundariesDimTagIt = boundariesDimTags;
-            Boundary* boundaryIt = volumeIt->boundaries;
-            for (unsigned int j = 0; j < nBoundaries; ++j)
+            const unsigned int nVolumeBoundaries = *nVolumeBoundariesIt;
+            for (unsigned int j = 0; j < nVolumeBoundaries; ++j)
             {
-                ++boundariesDimTagIt;
-                int boundaryTag = *boundariesDimTagIt;
+                ++boundaryDimTagIt;
+                int boundaryTag = *boundaryDimTagIt;
                 boundaryIt->tag = boundaryTag;
                 boundaryIt->condition = Map::getExistedValue(boundaryTag, conditionTypeByBoundaryTag + boundaryTag % nSurfaces);
                 boundaryIt->isPlane = GMSHProxy::model::isSurfacePlane(boundaryTag);
@@ -612,17 +620,19 @@ private:
                         nonconformInterface->volumesIndexes[0] = i;
                     }
                 }
-                ++boundariesDimTagIt;
+                ++boundaryDimTagIt;
                 ++boundaryIt;
             }
-
-            GMSHProxy::free(boundariesDimTags);
+            ++nVolumeBoundariesIt;
         }
 
         delete[] materialPhaseByVolumeTag;
         delete[] conditionTypeByBoundaryTag;
         delete[] wasNonconfromInterfaceProcessed;
+
         GMSHProxy::free(volumesDimTags);
+        GMSHProxy::free(boundariesDimTags);
+        GMSHProxy::free(volumesBoundariesCounts);
     }
 
     double* dblBuffer;
