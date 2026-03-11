@@ -1,21 +1,44 @@
 #pragma once
-#include <cstdint>
-#include "Coordinates.h"
 
 struct Boundary
 {
-	struct ICondition
+	struct Condition
 	{
 		static enum class Type { DIRICHLET_VALUE, DIRICHLET_FUNCTION, NEWMAN_FUNCTION, NEWMAN_VALUE, STEFAN, CONFORM_INTERFACE, NONCONFORM_INTERFACE, HOMOGENEOUS_NEWMAN, UNDEFINED };
-		const Type type;
 
-	protected:
-		ICondition(Type type) : type{ type }
+		union TypeData
 		{
+			unsigned int index;
+			double value;
+		};
 
+		Type type;
+		TypeData typeData;
+
+		static void computeDirichletValues(const Coordinates points[], uint8_t nPoints, double values[])
+		{
+			for (uint8_t i = 0; i < nPoints; ++i)
+			{
+				*values = 0.0;
+
+				++points;
+				++values;
+			}
+		}
+
+		static void computeNewmanValues(const Coordinates points[], uint8_t nPoints, double values[])
+		{
+			for (uint8_t i = 0; i < nPoints; ++i)
+			{
+				*values = 0.0;
+
+				++points;
+				++values;
+			}
 		}
 	};
 
+	/*
 	template<ICondition::Type conditionType> struct Condition;
 
 	template<>
@@ -142,8 +165,10 @@ struct Boundary
 		static const Condition<ICondition::Type::NEWMAN_FUNCTION> newmanFunctionCondition;
 		static const Condition<ICondition::Type::DIRICHLET_FUNCTION> dirichletFunctionCondition;
 	};
-
+	*/
 	int tag;
 	bool isPlane;
-	const ICondition* condition;
+	bool isShared;
+	unsigned int index;
+	const Condition* condition;
 };

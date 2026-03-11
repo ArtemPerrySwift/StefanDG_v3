@@ -589,7 +589,7 @@ void computeNewmanFacesAdjusments(const int boundaryTag,
     for (size_t faceIndex = 0; faceIndex < nFaces; ++faceIndex)
     {
         CoordinatesFunctions::translate(NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::localPoints, NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::nSteps, *initPointIt, *transpJacobianMatrixIt, integrationPoints);
-        Boundary::Condition<Boundary::ICondition::Type::NEWMAN_FUNCTION>::getValues(integrationPoints, NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::nSteps, newmanValues);
+        Boundary::Condition::computeNewmanValues(integrationPoints, NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::nSteps, newmanValues);
         
         DTGeometryKernel::computeChangingIndexes()
 
@@ -915,7 +915,7 @@ void computeTetrahedronsAdjusments(const double(*localJacobianMatrixIt)[LocalCoo
 
 }
 
-void process(const Volume* volumeIt, const unsigned int nVolumes, size_t** volumeElementsTagsSetIt, size_t* nVolumeElementsIt, size_t &elementAdjusments, size_t &nDOFs)
+void preprocess(const Volume* volumeIt, const unsigned int nVolumes, size_t** volumeElementsTagsSetIt, size_t* nVolumeElementsIt, size_t &nElementsAdjusments, size_t &nDOFs)
 {
     size_t nElements = 0;
     for (unsigned int i = 0; i < nVolumes; ++i)
@@ -924,12 +924,11 @@ void process(const Volume* volumeIt, const unsigned int nVolumes, size_t** volum
         nElements += *nVolumeElementsIt;
     }
 
-    elementAdjusments = nElements * ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS;
+    nElementsAdjusments = nElements * ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS;
     nDOFs = nElements * Basis::N_FUNCTIONS;
 }
 
 void computeVolumeAdjusments(const Volume& volume,
-                             const unsigned int nVolumes,
                              const double penalty,
                              const double dt,
                              size_t nElements,
@@ -996,38 +995,38 @@ void computeVolumeAdjusments(const Volume& volume,
         {
             switch (boundaryIt->condition->type)
             {
-            case Boundary::ICondition::Type::DIRICHLET_FUNCTION:
+            case Boundary::Condition::Type::DIRICHLET_FUNCTION:
             {
 
                 break;
             }
 
-            case Boundary::ICondition::Type::DIRICHLET_VALUE:
+            case Boundary::Condition::Type::DIRICHLET_VALUE:
             {
                 break;
             }
 
-            case Boundary::ICondition::Type::NEWMAN_FUNCTION:
+            case Boundary::Condition::Type::NEWMAN_FUNCTION:
             {
                 break;
             }
 
-            case Boundary::ICondition::Type::NEWMAN_VALUE:
+            case Boundary::Condition::Type::NEWMAN_VALUE:
             {
                 break;
             }
 
-            case Boundary::ICondition::Type::STEFAN:
+            case Boundary::Condition::Type::STEFAN:
             {
                 break;
             }
 
-            case Boundary::ICondition::Type::NONCONFORM_INTERFACE:
+            case Boundary::Condition::Type::NONCONFORM_INTERFACE:
             {
                 break;
             }
 
-            case Boundary::ICondition::Type::HOMOGENEOUS_NEWMAN:
+            case Boundary::Condition::Type::HOMOGENEOUS_NEWMAN:
             {
                 break;
             }

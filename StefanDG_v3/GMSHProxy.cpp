@@ -157,6 +157,16 @@ namespace GMSHProxy
             }
         }
 
+        void getPhysicalName3D(const int tag, char*& physicalName)
+        {
+            int ierr = 0;
+            gmshModelGetPhysicalName(constants::DIMENSION_3D, tag, &physicalName, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+        }
+
         void getEntitiesForPhysicalGroup(const int dim, const int physicalTag, int* &entitiesTags, size_t &nEntities)
         {
             int ierr = 0;
@@ -172,6 +182,19 @@ namespace GMSHProxy
             int ierr = 0;
             size_t nEntitiesLong;
             gmshModelGetEntitiesForPhysicalGroup(dim, physicalTag, &entitiesTags, &nEntitiesLong, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            nEntities = nEntitiesLong;
+        }
+
+        void getEntitiesForPhysicalGroup3D(const int physicalTag, int*& entitiesTags, unsigned int& nEntities)
+        {
+            int ierr = 0;
+            size_t nEntitiesLong;
+            gmshModelGetEntitiesForPhysicalGroup(constants::DIMENSION_3D, physicalTag, &entitiesTags, &nEntitiesLong, &ierr);
             if (ierr)
             {
                 throwLastError();
@@ -221,7 +244,7 @@ namespace GMSHProxy
             gmshFree(dimTags);
         }
 
-        void getVolumes(int*& volumesDimTags, unsigned int& nVolumes, int* &boundariesDimTags, unsigned int*& volumesBoundariesCounts, unsigned int& nBoundaries)
+        void getVolumes(int*& volumesDimTags, unsigned int& nVolumes, int**& volumesBoundariesDimTags, unsigned int*& volumesBoundariesCounts, unsigned int &nBoundaries)
         {
             int ierr;
             int* volumeDimTagIt;
@@ -231,32 +254,29 @@ namespace GMSHProxy
             {
                 throwLastError();
             }
-
-            volumesDimTags = volumeDimTagIt;
             nVolumes = nVolumesDimTags / 2;
-            size_t nBoundariesDimTags;
-            gmshModelGetBoundary(volumeDimTagIt, nVolumesDimTags, &boundariesDimTags, &nBoundariesDimTags, FALSE_C, FALSE_C, FALSE_C, &ierr);
-            if (ierr)
-            {
-                throwLastError();
-            }
 
-            nBoundaries = nBoundariesDimTags / 2;
+            int** volumesBoundariesDimTagIt = (int**)gmshMalloc(nVolumes * sizeof(int*));
             unsigned int* volumeBoundariesCountIt = (unsigned int*)gmshMalloc(nVolumes * sizeof(unsigned int));
 
+            volumesBoundariesDimTags = volumesBoundariesDimTagIt;
             volumesBoundariesCounts = volumeBoundariesCountIt;
-            int* volumeBoundariesDimTag;
+
+            nBoundaries = 0;
+            size_t nBoundariesDimTags;
             for (unsigned int i = 0; i < nVolumes; ++i)
             {
-                gmshModelGetBoundary(volumeDimTagIt, 2, &volumeBoundariesDimTag, &nBoundariesDimTags, FALSE_C, FALSE_C, FALSE_C, &ierr);
+                gmshModelGetBoundary(volumeDimTagIt, 2, volumesBoundariesDimTagIt, &nBoundariesDimTags, FALSE_C, FALSE_C, FALSE_C, &ierr);
                 if (ierr)
                 {
                     throwLastError();
                 }
-                gmshFree(volumeBoundariesDimTag);
 
                 *volumeBoundariesCountIt = nBoundariesDimTags / 2;
+                nBoundaries += *volumeBoundariesCountIt;
+
                 ++volumeBoundariesCountIt;
+                ++volumesBoundariesDimTagIt;
             }
             
         }
@@ -276,6 +296,24 @@ namespace GMSHProxy
             free(downEntitiesTags);
         }
 
+        unsigned int getSurfaceUpEntitiesCount(const int surfaceTag)
+        {
+            int* downEntitiesTags, *upEntitiesTags;
+            size_t nDownEntities, nUpEntities;
+            int ierr;
+            gmshModelGetAdjacencies(constants::DIMENSION_2D, surfaceTag, &upEntitiesTags, &nUpEntities, &downEntitiesTags, &nDownEntities, &ierr);
+
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            free(downEntitiesTags);
+            free(upEntitiesTags);
+
+            return nUpEntities;
+        }
+
         void getPhysicalGroupsForEntity(const int dim, const int entityTag, int* &physicalTags, size_t &nPhysicalGroups)
         {
             int ierr;
@@ -286,7 +324,22 @@ namespace GMSHProxy
             }
         }
 
-        void getBoundaries(const int entityDim, const int entityTag, int* &boundariesDimTags, size_t &nBoundariesDimTags)
+        bool isSurfaceFreeOfPhysicalGroups(const int surfacesTag)
+        {
+            int ierr;
+            int* physicalTags;
+            size_t nPhysicalGroups;
+            gmshModelGetPhysicalGroupsForEntity(constants::DIMENSION_2D, surfacesTag, &physicalTags, &nPhysicalGroups, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            gmshFree(physicalTags);
+            return nPhysicalGroups == 0;
+        }
+
+        void determineBoundaries(const int entityDim, const int entityTag, int* &boundariesDimTags, size_t &nBoundariesDimTags)
         {
             int entityDimTag[] = { entityDim, entityTag };
 
@@ -298,7 +351,7 @@ namespace GMSHProxy
             }
         }
 
-        void getBoundaries(const int entityDim, const int entityTag, int*& boundariesDimTags, unsigned int& nBoundaries)
+        void determineBoundaries(const int entityDim, const int entityTag, int*& boundariesDimTags, unsigned int& nBoundaries)
         {
             int entityDimTag[] = { entityDim, entityTag };
             size_t nBoundariesDimTags;
@@ -310,6 +363,41 @@ namespace GMSHProxy
             }
 
             nBoundaries = nBoundariesDimTags / 2;
+        }
+
+        void getBoundariesFor3DEntity(const int entityTag, int*& boundariesDimTags, unsigned int& nBoundariesTags)
+        {
+            int entityDimTag[] = { constants::DIMENSION_3D, entityTag };
+
+            size_t nBoundariesDimTags;
+
+            int ierr;
+            gmshModelGetBoundary(entityDimTag, 2, &boundariesDimTags, &nBoundariesDimTags, FALSE_C, FALSE_C, FALSE_C, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            nBoundariesTags = nBoundariesDimTags / 2;
+            gmshFree(boundariesDimTags);
+        }
+
+        unsigned int getBoundariesCount3DEntity(const int entityTag)
+        {
+            int entityDimTag[] = { constants::DIMENSION_3D, entityTag };
+
+            int* boundariesDimTags;
+            size_t nBoundariesDimTags;
+
+            int ierr;
+            gmshModelGetBoundary(entityDimTag, 2, &boundariesDimTags, &nBoundariesDimTags, FALSE_C, FALSE_C, FALSE_C, &ierr);
+            if (ierr)
+            {
+                throwLastError();
+            }
+
+            gmshFree(boundariesDimTags);
+            return nBoundariesDimTags / 2;
         }
 
         void getBoundariesFor3DEntity(const int entityTag, int*& boundariesTags, size_t& nBoundariesTags)

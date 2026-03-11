@@ -746,8 +746,9 @@ namespace DTGeometryKernel
             for (unsigned int i = 0; i < nBoundaries; ++i)
             {
                 GMSHProxy::model::mesh::getTetrahedronsFacesOnSurface(boundaryIt->tag, *boundaryFacesTagsSetIt, boundaryFacesSetIt->count);
-
                 nBoundariesFaces += boundaryFacesSetIt->count;
+
+
 
                 ++boundaryIt;
                 ++boundaryFacesTagsSetIt;
@@ -837,11 +838,11 @@ namespace DTGeometryKernel
 
                 switch (boundaryIt->condition->type)
                 {
-                case Boundary::ICondition::Type::DIRICHLET_VALUE:
-                case Boundary::ICondition::Type::NEWMAN_VALUE:
-                case Boundary::ICondition::Type::STEFAN:
-                case Boundary::ICondition::Type::HOMOGENEOUS_NEWMAN:
-                case Boundary::ICondition::Type::NONCONFORM_INTERFACE:
+                case Boundary::Condition::Type::DIRICHLET_VALUE:
+                case Boundary::Condition::Type::NEWMAN_VALUE:
+                case Boundary::Condition::Type::STEFAN:
+                case Boundary::Condition::Type::HOMOGENEOUS_NEWMAN:
+                case Boundary::Condition::Type::NONCONFORM_INTERFACE:
                 {
                     if (nBoundaryFaces == 0)
                     {

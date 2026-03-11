@@ -150,6 +150,7 @@
     <ClInclude Include="Bases.h" />
     <ClInclude Include="BoundariesConditions.h" />
     <ClInclude Include="Boundary.h" />
+    <ClInclude Include="ConformInterface.h" />
     <ClInclude Include="Coordinates.h" />
     <ClInclude Include="CoordinatesFunctions.h" />
     <ClInclude Include="CrossTetrahedronsAdjusments.h" />
