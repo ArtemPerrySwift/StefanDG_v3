@@ -7,4 +7,6 @@ struct FacesSet
 	const size_t* elementIndexes;
 	const uint8_t* localindexes;
 	size_t count;
+
+	size_t* tagsBuffer;
 };

@@ -513,7 +513,7 @@ namespace DTGeometryKernel
         }
 
         static void determineFaceTetrahedronConnections(const size_t* tetrahedronsFacesTags,
-            const size_t nTetrahedrons,
+            const size_t nElements,
             const size_t* const* boundariesFacesTags,
             const size_t* nBoundariesFaces,
             const size_t nBoundaries,
@@ -527,7 +527,7 @@ namespace DTGeometryKernel
             std::unordered_map<size_t, size_t> faceIndexeByFaceTag;
             faceIndexeByFaceTag.reserve(nFaces);
 
-            for (size_t iTetrahedron = 0, iFace = 0; iTetrahedron < nTetrahedrons; ++iTetrahedron)
+            for (size_t iTetrahedron = 0, iFace = 0; iTetrahedron < nElements; ++iTetrahedron)
             {
                 for (uint8_t iFaceLocal = 0; iFaceLocal < constants::tetrahedron::N_FACES; ++iFaceLocal, ++iFace)
                 {
@@ -729,7 +729,7 @@ namespace DTGeometryKernel
                                   int& interiorFacesEntityTag,
                                   FacesSet &interiorFacesSet,
                                   FacesSet boundariesFacesSets[],
-                                  void* memoryBuffer)
+                                  Container<size_t, size_t>* sharedBoundariesFacesTagsSets)
         {
             size_t(*facesNodesTags)[constants::tetrahedron::N_FACES][constants::triangle::N_NODES];
             size_t(*facesTags)[constants::tetrahedron::N_FACES];
@@ -737,21 +737,38 @@ namespace DTGeometryKernel
 
             GMSHProxy::model::mesh::getTetrahedronsFaces(facesNodesTags, facesTags, nFaces, volumeTag);
 
-            size_t** boundariesFacesTagsSets = (size_t**)memoryBuffer;
 
             const Boundary* boundaryIt = boundaries;
             FacesSet* boundaryFacesSetIt = boundariesFacesSets;
-            size_t** boundaryFacesTagsSetIt = boundariesFacesTagsSets;
             size_t nBoundariesFaces = 0;
             for (unsigned int i = 0; i < nBoundaries; ++i)
             {
-                GMSHProxy::model::mesh::getTetrahedronsFacesOnSurface(boundaryIt->tag, *boundaryFacesTagsSetIt, boundaryFacesSetIt->count);
+                if (boundaryIt->isShared)
+                {
+                    Container<size_t, size_t>* sharedBoundariesFacesTagsSet = sharedBoundariesFacesTagsSets + boundaryIt->index;
+                    if (sharedBoundariesFacesTagsSet->elements == nullptr)
+                    {
+                        GMSHProxy::model::mesh::getTetrahedronsFacesOnSurface(boundaryIt->tag, boundaryFacesSetIt->tagsBuffer, boundaryFacesSetIt->count);
+                        sharedBoundariesFacesTagsSet->elements = boundaryFacesSetIt->tagsBuffer;
+                        sharedBoundariesFacesTagsSet->count = boundaryFacesSetIt->count;
+                    }
+                    else
+                    {
+                        boundaryFacesSetIt->tagsBuffer = sharedBoundariesFacesTagsSet->elements;
+                        boundaryFacesSetIt->count = sharedBoundariesFacesTagsSet->count;
+                        sharedBoundariesFacesTagsSet->count = 0;
+                    }
+                }
+                else
+                {
+                    GMSHProxy::model::mesh::getTetrahedronsFacesOnSurface(boundaryIt->tag, boundaryFacesSetIt->tagsBuffer, boundaryFacesSetIt->count);
+                }
+
                 nBoundariesFaces += boundaryFacesSetIt->count;
 
 
 
                 ++boundaryIt;
-                ++boundaryFacesTagsSetIt;
                 ++boundaryFacesSetIt;
             }
 
@@ -771,8 +788,8 @@ namespace DTGeometryKernel
             size_t* entityFacesNodes = new size_t[nEntityFacesNodes];
             size_t* entityFacesNodesIt = entityFacesNodes;
 
-            size_t nTetrahedrons = nFaces / constants::tetrahedron::N_FACES;
-            for (size_t iTetrahedron = 0, iFace = 0; iTetrahedron < nTetrahedrons; ++iTetrahedron)
+            size_t nElements = nFaces / constants::tetrahedron::N_FACES;
+            for (size_t iTetrahedron = 0, iFace = 0; iTetrahedron < nElements; ++iTetrahedron)
             {
                 for (uint8_t iFaceLocal = 0; iFaceLocal < constants::tetrahedron::N_FACES; ++iFaceLocal, ++iFace)
                 {
@@ -824,11 +841,10 @@ namespace DTGeometryKernel
 
             boundaryFacesSetIt = boundariesFacesSets;
             boundaryIt = boundaries;
-            boundaryFacesTagsSetIt = boundariesFacesTagsSets;
             for (unsigned int i = 0; i < nBoundaries; ++i)
             {
                 size_t nBoundaryFaces = boundaryFacesSetIt->count;
-                faceTagIt = *boundaryFacesTagsSetIt;
+                faceTagIt = boundaryFacesSetIt->tagsBuffer;
                 
                 faceElementIndexIt = new size_t[nBoundaryFaces];
                 faceLocalIndexIt = new uint8_t[nBoundaryFaces];
@@ -911,11 +927,22 @@ namespace DTGeometryKernel
                 }
                 }
 
-                GMSHProxy::free(*boundaryFacesTagsSetIt);
+                if (boundaryIt->isShared)
+                {
+                    Container<size_t, size_t>* sharedBoundariesFacesTagsSet = sharedBoundariesFacesTagsSets + boundaryIt->index;
+                    if (sharedBoundariesFacesTagsSet->count == 0)
+                    {
+                        GMSHProxy::free(boundaryFacesSetIt->tagsBuffer);
+                        sharedBoundariesFacesTagsSet->elements = nullptr;
+                    }
+                }
+                else
+                {
+                    GMSHProxy::free(boundaryFacesSetIt->tagsBuffer);
+                }
 
-                ++boundaryFacesTagsSetIt;
                 ++boundaryIt;
-                ++boundaryFacesTagsSetIt;
+                ++boundaryFacesSetIt;
             }
 
             GMSHProxy::free(facesNodesTags);
@@ -960,9 +987,9 @@ namespace DTGeometryKernel
             interiorFacesTetrahedronsIndexes = new size_t[nInteriorFaces][2];
             interiorFacesLocalIndexes = new uint8_t[nInteriorFaces][2];
 
-            size_t nTetrahedrons = nTetrahedronsFacesNodesTags / (constants::tetrahedron::N_FACES * constants::triangle::N_NODES);
+            size_t nElements = nTetrahedronsFacesNodesTags / (constants::tetrahedron::N_FACES * constants::triangle::N_NODES);
             determineFaceTetrahedronConnections(tetrahedronsFacesTags,
-                nTetrahedrons,
+                nElements,
                 boundariesFacesTags,
                 nBoundariesFaces,
                 nBoundaries,

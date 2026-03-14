@@ -961,12 +961,12 @@ namespace GMSHProxy
                     throwLastError();
                 }
             }
-            void getTetrahedrons(size_t*& tetrahedronsTags, size_t& nTetrahedrons, size_t(*&tetrahedronsNodesTags)[constants::tetrahedron::N_NODES], const int tag, const size_t task, const size_t nTasks)
+            void getTetrahedrons(size_t*& elementsTags, size_t& nElements, size_t(*&tetrahedronsNodesTags)[constants::tetrahedron::N_NODES], const int tag, const size_t task, const size_t nTasks)
             {
                 int ierr;
                 size_t nNodes;
                 size_t* nodesTags;
-                gmshModelMeshGetElementsByType(TETRAHEDRON_TYPE, &tetrahedronsTags, &nTetrahedrons, &nodesTags, &nNodes, tag, task, nTasks, &ierr);
+                gmshModelMeshGetElementsByType(TETRAHEDRON_TYPE, &elementsTags, &nElements, &nodesTags, &nNodes, tag, task, nTasks, &ierr);
 
                 if (ierr)
                 {
@@ -976,12 +976,12 @@ namespace GMSHProxy
                 tetrahedronsNodesTags = (size_t(*)[constants::tetrahedron::N_NODES])nodesTags;
             }
 
-            void getTetrahedrons(size_t*& tetrahedronsTags, size_t& nTetrahedrons,const int tag)
+            void getTetrahedrons(size_t*& elementsTags, size_t& nElements,const int tag)
             {
                 int ierr;
                 size_t nNodes;
                 size_t* nodesTags;
-                gmshModelMeshGetElementsByType(TETRAHEDRON_TYPE, &tetrahedronsTags, &nTetrahedrons, &nodesTags, &nNodes, tag, TASK_DEFAULT, N_TASK_DEFAULT, &ierr);
+                gmshModelMeshGetElementsByType(TETRAHEDRON_TYPE, &elementsTags, &nElements, &nodesTags, &nNodes, tag, TASK_DEFAULT, N_TASK_DEFAULT, &ierr);
 
                 if (ierr)
                 {

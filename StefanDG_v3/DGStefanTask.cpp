@@ -28,7 +28,7 @@ void computeTetrahedronsAdjusments(const double(*localJacobianMatrixIt)[LocalCoo
     const double(*transpMatrixIt)[Coordinates::COUNT * LocalCoordinates3D::COUNT],
     const double* determinantIt,
     const Coordinates* initPointIt,
-    const size_t nTetrahedrons,
+    const size_t nElements,
     const double lambda,
     const double gamma,
     const double dt,
@@ -53,7 +53,7 @@ void computeTetrahedronsAdjusments(const double(*localJacobianMatrixIt)[LocalCoo
 
     const LLt* massSLAESolverPtr = ElementDGCalculator<Basis>::getMassSLAESolverPtr();
 
-    for (size_t tetrahedronIndex = 0; tetrahedronIndex < nTetrahedrons; tetrahedronIndex++)
+    for (size_t tetrahedronIndex = 0; tetrahedronIndex < nElements; tetrahedronIndex++)
     {
         CoordinatesFunctions::translate(*localJacobianMatrixIt, localGradients, NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps, gradients);
         ElementDGCalculator<Basis>::computeStiffnessMatrix(gradients, stiffnessMatrix);
@@ -817,7 +817,7 @@ void computeTetrahedronsAdjusments(const double(*localJacobianMatrixIt)[LocalCoo
                                    const double(*transpMatrixIt)[Coordinates::COUNT * LocalCoordinates3D::COUNT],
                                    const double* determinantIt,
                                    const Coordinates* initPointIt,
-                                   const size_t nTetrahedrons,
+                                   const size_t nElements,
                                    const MaterialPhase& materialPhase,
                                    const double dt,
                                    void* memoryBuffer,
@@ -842,7 +842,7 @@ void computeTetrahedronsAdjusments(const double(*localJacobianMatrixIt)[LocalCoo
     const LLt* massSLAESolverPtr = ElementDGCalculator<Basis>::getMassSLAESolverPtr();
     if (materialPhase.state == MaterialPhase::LIQUID)
     {
-        for (size_t tetrahedronIndex = 0; tetrahedronIndex < nTetrahedrons; tetrahedronIndex++)
+        for (size_t tetrahedronIndex = 0; tetrahedronIndex < nElements; tetrahedronIndex++)
         {
             CoordinatesFunctions::translate(*localJacobianMatrixIt, localGradients, NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps, gradients);
             ElementDGCalculator<Basis>::computeStiffnessMatrix(gradients, stiffnessMatrix);
@@ -878,7 +878,7 @@ void computeTetrahedronsAdjusments(const double(*localJacobianMatrixIt)[LocalCoo
     }
     else
     {
-        for (size_t tetrahedronIndex = 0; tetrahedronIndex < nTetrahedrons; tetrahedronIndex++)
+        for (size_t tetrahedronIndex = 0; tetrahedronIndex < nElements; tetrahedronIndex++)
         {
             CoordinatesFunctions::translate(*localJacobianMatrixIt, localGradients, NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps, gradients);
             ElementDGCalculator<Basis>::computeStiffnessMatrix(gradients, stiffnessMatrix);
@@ -937,6 +937,7 @@ void computeVolumeAdjusments(const Volume& volume,
                              double firstApproximation[][Basis::N_FUNCTIONS],
                              void* memoryBuffer,
                              FacesSet* boundariesFacesSetsBuffer,
+                             Container<size_t, size_t>* sharedBoundariesFacesTagsSets,
                              CrossElementsAdjusmentsSet& interiorFacesAdjuesmentsSet,
                              NonconformInterface nonconformInterfaces[],
                              InterfaceSideElementsSet nonconformalInterfaceSideElementsSetIt[][2])
@@ -966,7 +967,7 @@ void computeVolumeAdjusments(const Volume& volume,
         FacesSet interiorFacesSet;
         FacesSet* boundariesFacesSets = boundariesFacesSetsBuffer;
 
-        DTGeometryKernel::getVolumeFacesSets(volume.tag, volume.boundaries, volume.nBoundaries, interiorFacesEntityTag, interiorFacesSet, boundariesFacesSets, memoryBuffer);
+        DTGeometryKernel::getVolumeFacesSets(volume.tag, volume.boundaries, volume.nBoundaries, interiorFacesEntityTag, interiorFacesSet, boundariesFacesSets, sharedBoundariesFacesTagsSets);
 
         interiorFacesAdjuesmentsSet.elementIndexes = interiorFacesSet.elementIndexes;
         interiorFacesAdjuesmentsSet.nCrossElements = interiorFacesSet.count;

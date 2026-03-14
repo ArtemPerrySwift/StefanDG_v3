@@ -6,7 +6,7 @@ size_t ElementsAdjusmentsSet::calcAllTrtrahedronsCount(const ElementsAdjusmentsS
     size_t nTetrahederons = 0;
     for (size_t i = 0; i < nSets; ++i)
     {
-        nTetrahederons += tetrahedronsAdjusmentsSetIt->nTetrahedrons;
+        nTetrahederons += tetrahedronsAdjusmentsSetIt->nElements;
         ++tetrahedronsAdjusmentsSetIt;
     }
     

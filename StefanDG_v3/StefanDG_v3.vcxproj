@@ -142,6 +142,7 @@
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Map.cpp" />
     <ClCompile Include="MaterialPhase.cpp" />
+    <ClCompile Include="Model.cpp" />
     <ClCompile Include="NumericalIntegration.cpp" />
     <ClCompile Include="Solution.cpp" />
     <ClCompile Include="TetrahedronsAdjusments.cpp" />
@@ -151,6 +152,7 @@
     <ClInclude Include="BoundariesConditions.h" />
     <ClInclude Include="Boundary.h" />
     <ClInclude Include="ConformInterface.h" />
+    <ClInclude Include="Container.h" />
     <ClInclude Include="Coordinates.h" />
     <ClInclude Include="CoordinatesFunctions.h" />
     <ClInclude Include="CrossTetrahedronsAdjusments.h" />
@@ -169,6 +171,7 @@
     <ClInclude Include="LocalCoordinates3D.h" />
     <ClInclude Include="Map.h" />
     <ClInclude Include="MaterialPhase.h" />
+    <ClInclude Include="Model.h" />
     <ClInclude Include="NonconformInterface.h" />
     <ClInclude Include="NumericalIntegration.h" />
     <ClInclude Include="Solution.h" />

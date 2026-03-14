@@ -6,6 +6,7 @@
 #include "FacesSet.h"
 #include "Coordinates.h"
 #include "LocalCoordinates3D.h"
+#include "Container.h"
 
 namespace DTGeometryKernel
 {
@@ -43,7 +44,7 @@ namespace DTGeometryKernel
                               int& interiorFacesEntityTag,
                               FacesSet& interiorFacesSet,
                               FacesSet boundariesFacesSets[],
-                              void* memoryBuffer);
+                              Container<size_t, size_t>* sharedBoundariesFacesTagsSets);
 
     size_t createVolumeFacesEntities(const int volumeTag,
         const int boundariesTags[],

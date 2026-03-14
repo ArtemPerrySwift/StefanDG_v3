@@ -133,7 +133,7 @@ namespace GMSHProxy
                 const size_t task = TASK_DEFAULT,
                 const size_t nTasks = N_TASK_DEFAULT);
 
-            void getTetrahedrons(size_t*& tetrahedronsTags, size_t& nTetrahedrons, const int tag);
+            void getTetrahedrons(size_t*& elementsTags, size_t& nElements, const int tag);
 
 
 
