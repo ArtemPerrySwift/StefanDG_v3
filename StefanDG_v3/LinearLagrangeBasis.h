@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "LocalCoordinates3D.h"
+#include "LocalCoordinates2D.h"
 
 class LinearLagrangeBasis
 {
@@ -13,18 +14,17 @@ public:
 
 	static void compute(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, double* valueIt);
 	static void compute(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, LocalCoordinates3D* gradientIt);
+
+	void computeOnFace0(const LocalCoordinates2D* localPointIt, const uint8_t nPoints, double* valueIt);
+	void computeOnFace1(const LocalCoordinates2D* localPointIt, const uint8_t nPoints, double* valueIt);
+	void computeOnFace2(const LocalCoordinates2D* localPointIt, const uint8_t nPoints, double* valueIt);
+	void computeOnFace3(const LocalCoordinates2D* localPointIt, const uint8_t nPoints, double* valueIt);
+
+	void computeOnFace0(const LocalCoordinates2D* localPointIt, const uint8_t nPoints, LocalCoordinates3D* gradientIt);
+	void computeOnFace1(const LocalCoordinates2D* localPointIt, const uint8_t nPoints, LocalCoordinates3D* gradientIt);
+	void computeOnFace2(const LocalCoordinates2D* localPointIt, const uint8_t nPoints, LocalCoordinates3D* gradientIt);
+	void computeOnFace3(const LocalCoordinates2D* localPointIt, const uint8_t nPoints, LocalCoordinates3D* gradientIt);
 	//static void compute(const LocalCoordinates* localPointIt, const size_t nPoints, double* gradientIt);
-
-private:
-	static double* compute0Function(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, double* valueIt);
-	static double* compute1Function(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, double* valueIt);
-	static double* compute2Function(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, double* valueIt);
-	static double* compute3Function(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, double* valueIt);
-
-	static LocalCoordinates3D* compute0Function(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, LocalCoordinates3D* gradientIt);
-	static LocalCoordinates3D* compute1Function(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, LocalCoordinates3D* gradientIt);
-	static LocalCoordinates3D* compute2Function(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, LocalCoordinates3D* gradientIt);
-	static LocalCoordinates3D* compute3Function(const LocalCoordinates3D* localPointIt, const uint8_t nPoints, LocalCoordinates3D* gradientIt);
 };
 
 //const uint8_t LinearLagrangeBasis::N_FUNCTIONS = 4;

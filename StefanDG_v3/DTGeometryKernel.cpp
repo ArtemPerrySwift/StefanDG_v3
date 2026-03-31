@@ -737,7 +737,6 @@ namespace DTGeometryKernel
 
             GMSHProxy::model::mesh::getTetrahedronsFaces(facesNodesTags, facesTags, nFaces, volumeTag);
 
-
             const Boundary* boundaryIt = boundaries;
             FacesSet* boundaryFacesSetIt = boundariesFacesSets;
             size_t nBoundariesFaces = 0;
@@ -1507,5 +1506,81 @@ namespace DTGeometryKernel
             *changingIndexes = 1;
             
             return true;
+        }
+
+        uint8_t computeChangingIndexes(const size_t original[constants::triangle::N_NODES], const size_t comparison[constants::triangle::N_NODES])
+        {
+            uint8_t changingIndexes = 0;
+            if (*original == *comparison)
+            {
+                ++original;
+                ++comparison;
+                if (*original == *comparison)
+                {
+                    changingIndexes |= 1 << 2;
+                    changingIndexes |= 2 << 4;
+
+                    return changingIndexes;
+                }
+
+                changingIndexes |= 2 << 2;
+                changingIndexes |= 1 << 4;
+                return true;
+            }
+
+            ++comparison;
+            if (*original == *comparison)
+            {
+                changingIndexes |= 1;
+                ++original;
+                ++comparison;
+
+                if (*original == *comparison)
+                {
+                    changingIndexes |= 2 << 2;
+                    return changingIndexes;
+                }
+
+                changingIndexes |= 2 << 4;
+                return changingIndexes;
+
+            }
+
+            changingIndexes |= 2;
+            ++original;
+            if (*original == *comparison)
+            {
+                changingIndexes |= 1 << 2;
+                return changingIndexes;
+            }
+
+            changingIndexes |= 1 << 4;
+            return changingIndexes;
+        }
+
+        bool isTrianglesCooriented(const size_t triangle1[constants::triangle::N_NODES], const size_t triangle2[constants::triangle::N_NODES])
+        {
+            if (*triangle1 == *triangle2)
+            {
+                ++triangle1;
+                ++triangle2;
+                return *triangle1 == *triangle2;
+            }
+            else
+            {
+                ++triangle2;
+                if (*triangle1 == *triangle2)
+                {
+                    ++triangle1;
+                    ++triangle2;
+                    return *triangle1 == *triangle2;
+                }
+                else
+                {
+                    ++triangle1;
+                    ++triangle2;
+                    return *triangle1 == *triangle2;
+                }
+            }
         }
 };

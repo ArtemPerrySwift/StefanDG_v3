@@ -5,7 +5,6 @@
 struct InterfaceSideElementsSet
 {
 	const size_t* indexes;
-    const uint8_t* facesLocalIndexes;
     const double (*localJacobians)[LocalCoordinates3D::COUNT * Coordinates::COUNT];
     const Coordinates* initPoints;
 };

@@ -6,6 +6,8 @@
 
 namespace CoordinatesFunctions
 {
+	double computeTranspJacobianMatrix(const Coordinates* tetrahedronNodeBeginIt, double transpJacobianMatrix[LocalCoordinates3D::COUNT * Coordinates::COUNT]);
+
 	void computeLocalJacobianMatrix(const double transpJacobianMatrix[LocalCoordinates3D::COUNT * Coordinates::COUNT],
 		const double determinant,
 		double* localJacobianMatrixElementIt);
@@ -14,6 +16,14 @@ namespace CoordinatesFunctions
 		const size_t nJacobianMatrixies,
 		const double* determinnatIt,
 		double(*localJacobianMatrixIt)[LocalCoordinates3D::COUNT * Coordinates::COUNT]);
+
+	void copyTetrahedronsFacePoints(const uint8_t faceLocalIndex,
+		const Coordinates tetrahedronPoints[constants::tetrahedron::N_NODES],
+		Coordinates facePoints[constants::tetrahedron::N_NODES]);
+
+	void computeTetrahedronFaceDirections(const uint8_t faceLocalIndex, const Coordinates tetrahedronPoints[constants::tetrahedron::N_NODES], Coordinates directions[2]);
+	double computeTriagnleJacobianDet(const Coordinates triangleDirections[2]);
+	void computeNormalViaTriangleDirections(const Coordinates triangleDirections[2], Coordinates& normal);
 
 	void translate(const double localJacobian[LocalCoordinates3D::COUNT * Coordinates::COUNT], const LocalCoordinates3D* localGradientIt, const uint16_t nPoints, Coordinates* gradientIt);
 

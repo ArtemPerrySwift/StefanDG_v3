@@ -924,6 +924,119 @@ namespace GMSHProxy
                 size_t nParametricCoordinates;
 
                 int ierr;
+                gmshModelMeshGetNodesByElementType(TRIANGLE_TYPE, &tags, &nTags, &coordinates, &nCoordinates, &parametricCoordinates, &nParametricCoordinates, tag, FALSE_C, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                traianglesNodesTags = (size_t(*)[constants::triangle::N_NODES])tags;
+                traianglesNodes = (Coordinates(*)[constants::triangle::N_NODES])coordinates;
+            }
+
+            void getTetrahedronsNodes(const int tag,
+                                      size_t(*&tetrahedronsNodesTags)[constants::tetrahedron::N_NODES],
+                                      Coordinates(*&tetrahedronsNodes)[constants::tetrahedron::N_NODES],
+                                      size_t &nTertrahedrons)
+            {
+                size_t nNodes;
+
+                size_t nCoordinates;
+
+                double* parametricCoordinates;
+                size_t nParametricCoordinates;
+
+                int ierr;
+                gmshModelMeshGetNodesByElementType(TETRAHEDRON_TYPE, (size_t**)&tetrahedronsNodesTags, &nNodes, (double**)&tetrahedronsNodes, &nCoordinates, &parametricCoordinates, &nParametricCoordinates, tag, FALSE_C, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                nTertrahedrons = nNodes >> 2;
+
+                gmshFree(parametricCoordinates);
+            }
+
+            void getSurfaceTriagles(const int tag,
+                                    size_t(*&traianglesNodesTags)[constants::triangle::N_NODES],
+                                    size_t& nTriangles,
+                                    size_t*& facesTags)
+            {
+                size_t* tags;
+                size_t nTags;
+
+                size_t* nodesTags;
+                size_t nNodes;
+
+                int ierr;
+
+                gmshModelMeshGetElementsByType(TRIANGLE_TYPE, &tags, &nTags, &nodesTags, &nNodes, tag, TASK_DEFAULT, N_TASK_DEFAULT, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                gmshFree(tags);
+
+                traianglesNodesTags = (size_t(*)[constants::triangle::N_NODES])nodesTags;
+
+                int* facesOrientations;
+                size_t nFacesOrientations;
+                gmshModelMeshGetFaces(TRIANGLE_FACE_TYPE, nodesTags, nNodes, &facesTags, &nTriangles, &facesOrientations, &nFacesOrientations, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+            }
+
+            void getFacesOnSurface(const int tag,
+                size_t* &facesTags,
+                size_t& nFaces)
+            {
+                size_t* triangleTags;
+                size_t nTags;
+
+                size_t* trianglesNodesTags;
+                size_t nNodes;
+
+                int ierr;
+                gmshModelMeshGetElementsByType(TRIANGLE_TYPE, &triangleTags, &nFaces, &trianglesNodesTags, &nNodes, tag, TASK_DEFAULT, N_TASK_DEFAULT, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                gmshFree(triangleTags);
+
+                int* facesOrientations;
+                size_t nFacesOrientations;
+                gmshModelMeshGetFaces(TRIANGLE_FACE_TYPE, trianglesNodesTags, nNodes, &facesTags, &nFaces, &facesOrientations, &nFacesOrientations, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+
+            }
+
+            void getSurfaceTriagles(const int tag,
+                                    size_t(*&traianglesNodesTags)[constants::triangle::N_NODES],
+                                    Coordinates(*&traianglesNodes)[constants::triangle::N_NODES],
+                                    size_t &nTriangles,
+                                    size_t* &facesTags)
+            {
+                size_t* tags;
+                size_t nTags;
+
+                double* coordinates;
+                size_t nCoordinates;
+
+                double* parametricCoordinates;
+                size_t nParametricCoordinates;
+
+                int ierr;
 
                 gmshModelMeshGetNodesByElementType(TRIANGLE_TYPE, &tags, &nTags, &coordinates, &nCoordinates, &parametricCoordinates, &nParametricCoordinates, tag, FALSE_C, &ierr);
                 if (ierr)
@@ -933,6 +1046,16 @@ namespace GMSHProxy
 
                 traianglesNodesTags = (size_t(*)[constants::triangle::N_NODES])tags;
                 traianglesNodes = (Coordinates(*)[constants::triangle::N_NODES])coordinates;
+
+                int* facesOrientations;
+                size_t nFacesOrientations;
+                gmshModelMeshGetFaces(TRIANGLE_FACE_TYPE, tags, nTags, (size_t**)(&facesTags), &nTriangles, &facesOrientations, &nFacesOrientations, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+
             }
 
             void getIntegrationPoints(const int elementType, const char integrationType[], double** localCoord, double** weights, uint8_t* nIntegrationSteps)
@@ -1041,6 +1164,21 @@ namespace GMSHProxy
                 gmshFree(facesOrientations);
             }
 
+            void getTetrahedronsFaces(const size_t(*nodesTags)[constants::triangle::N_NODES], const size_t nFaces, size_t(*&facesTags))
+            {
+                int ierr;
+                int* facesOrientations;
+                size_t nFacesOrientations, nFacesBuf;
+
+                gmshModelMeshGetFaces(TRIANGLE_FACE_TYPE, (const size_t*)nodesTags, nFaces * constants::triangle::N_NODES, &facesTags, &nFacesBuf, &facesOrientations, &nFacesOrientations, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                gmshFree(facesOrientations);
+            }
+
             void getTetrahedronsFaces(size_t(*&nodesTags)[constants::tetrahedron::N_FACES][constants::triangle::N_NODES],
                                       size_t(*&facesTags)[constants::tetrahedron::N_FACES],
                                       size_t &nFaces,
@@ -1054,6 +1192,49 @@ namespace GMSHProxy
                 size_t nFacesOrientations;
 
                 gmshModelMeshGetFaces(TRIANGLE_FACE_TYPE, (const size_t*)nodesTags, nNodes, (size_t**)(&facesTags), &nFaces, &facesOrientations, &nFacesOrientations, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                gmshFree(facesOrientations);
+            }
+
+            void getTetrahedronsFaces(const int entityTag,
+                                      size_t (*&nodesTags)[constants::triangle::N_NODES],
+                                      size_t* &facesTags,
+                                      size_t& nFaces)
+            {
+                int ierr;
+                size_t nNodes;
+                gmshModelMeshGetElementFaceNodes(TETRAHEDRON_TYPE, TRIANGLE_FACE_TYPE, (size_t**)&nodesTags, &nNodes, entityTag, FALSE_C, TASK_DEFAULT, N_TASK_DEFAULT, &ierr);
+
+                int* facesOrientations;
+                size_t nFacesOrientations;
+
+                gmshModelMeshGetFaces(TRIANGLE_FACE_TYPE, (size_t*)nodesTags, nNodes, (size_t**)(&facesTags), &nFaces, &facesOrientations, &nFacesOrientations, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+                gmshFree(facesOrientations);
+            }
+
+
+            void getTetrahedronsFaces(size_t*& nodesTags,
+                size_t*& facesTags,
+                size_t& nFaces,
+                const int entityTag)
+            {
+                int ierr;
+                size_t nNodes;
+                gmshModelMeshGetElementFaceNodes(TETRAHEDRON_TYPE, TRIANGLE_FACE_TYPE, &nodesTags, &nNodes, entityTag, FALSE_C, TASK_DEFAULT, N_TASK_DEFAULT, &ierr);
+
+                int* facesOrientations;
+                size_t nFacesOrientations;
+
+                gmshModelMeshGetFaces(TRIANGLE_FACE_TYPE, nodesTags, nNodes, (size_t**)(&facesTags), &nFaces, &facesOrientations, &nFacesOrientations, &ierr);
                 if (ierr)
                 {
                     throwLastError();
@@ -1097,6 +1278,20 @@ namespace GMSHProxy
                 size_t nParametricCoordinates;
                 int ierr;
                 gmshModelMeshGetNodesByElementType(elementType, &nodesTags, &nNodesTags, &nodesCoordinates, &nCoordinates, &parametricCoordinates, &nParametricCoordinates, tag, FALSE_C, &ierr);
+                if (ierr)
+                {
+                    throwLastError();
+                }
+
+            }
+
+            void getTrianglesNodes(size_t*& nodesTags, size_t& nNodesTags, double*& nodesCoordinates, const int tag)
+            {
+                size_t nCoordinates;
+                double* parametricCoordinates;
+                size_t nParametricCoordinates;
+                int ierr;
+                gmshModelMeshGetNodesByElementType(TRIANGLE_TYPE, &nodesTags, &nNodesTags, &nodesCoordinates, &nCoordinates, &parametricCoordinates, &nParametricCoordinates, tag, FALSE_C, &ierr);
                 if (ierr)
                 {
                     throwLastError();

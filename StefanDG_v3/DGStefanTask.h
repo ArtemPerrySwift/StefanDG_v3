@@ -45,12 +45,10 @@ public:
         CrossElementsAdjusmentsSet* nonconformInterfacesAdjuesmentsSets = new CrossElementsAdjusmentsSet[model.nNonconformInterfaces];
 
         double** firstApproximationIt = new double*[model.nVolumes];
-        InterfaceSideElementsSet(*nonconformalInterfaceSideElementsSets)[2] = new InterfaceSideElementsSet[model.nNonconformInterfaces][2];
-        InterfaceSideElementsSet(*conformalInterfaceSideElementsSets)[2] = new InterfaceSideElementsSet[model.nConformInterfaces][2];
 
-        Container<size_t*, size_t>* sharedBoundariesFacesTagsSets = new Container<size_t*, size_t>[model.nSharedBoundaries];
+        Boundary::MeshBuffer (*nonconformalInterfacesSidesMehsBuffers)[2] = new Boundary::MeshBuffer[model.nNonconformInterfaces][2];
+        SharedBoundary::MeshBuffer* sharedBoundariesMeshBuffers = new SharedBoundary::MeshBuffer[model.nSharedBoundaries];
 
-        initilize(sharedBoundariesFacesTagsSets, model.nSharedBoundaries);
 
         const size_t nTIntervals = nTSteps - 1;
         double dt = (tMax - tMin) / nTIntervals;

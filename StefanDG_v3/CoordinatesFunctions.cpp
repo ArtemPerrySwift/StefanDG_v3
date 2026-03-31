@@ -3,6 +3,33 @@
 
 namespace CoordinatesFunctions
 {
+    double computeTranspJacobianMatrix(const Coordinates* tetrahedronNodeBeginIt, double transpJacobianMatrix[LocalCoordinates3D::COUNT * Coordinates::COUNT])
+    {
+        const Coordinates* directionNodesPtr = tetrahedronNodeBeginIt + 1;
+        double* transpJacobianMatrixElementIt = transpJacobianMatrix;
+        *transpJacobianMatrixElementIt = directionNodesPtr->x - tetrahedronNodeBeginIt->x;
+        *(++transpJacobianMatrixElementIt) = directionNodesPtr->y - tetrahedronNodeBeginIt->y;
+        *(++transpJacobianMatrixElementIt) = directionNodesPtr->z - tetrahedronNodeBeginIt->z;
+
+        ++directionNodesPtr;
+        *transpJacobianMatrixElementIt = directionNodesPtr->x - tetrahedronNodeBeginIt->x;
+        *(++transpJacobianMatrixElementIt) = directionNodesPtr->y - tetrahedronNodeBeginIt->y;
+        *(++transpJacobianMatrixElementIt) = directionNodesPtr->z - tetrahedronNodeBeginIt->z;
+
+        ++directionNodesPtr;
+        *transpJacobianMatrixElementIt = directionNodesPtr->x - tetrahedronNodeBeginIt->x;
+        *(++transpJacobianMatrixElementIt) = directionNodesPtr->y - tetrahedronNodeBeginIt->y;
+        *(++transpJacobianMatrixElementIt) = directionNodesPtr->z - tetrahedronNodeBeginIt->z;
+
+        double det = transpJacobianMatrix[0] * transpJacobianMatrix[4] * transpJacobianMatrix[8];
+        det += transpJacobianMatrix[2] * transpJacobianMatrix[3] * transpJacobianMatrix[7];
+        det += transpJacobianMatrix[1] * transpJacobianMatrix[5] * transpJacobianMatrix[6];
+        det -= transpJacobianMatrix[2] * transpJacobianMatrix[4] * transpJacobianMatrix[6];
+        det -= transpJacobianMatrix[0] * transpJacobianMatrix[5] * transpJacobianMatrix[7];
+        det -= transpJacobianMatrix[1] * transpJacobianMatrix[3] * transpJacobianMatrix[8];
+
+        return det;
+    }
     void computeLocalJacobianMatrix(const double transpJacobianMatrix[LocalCoordinates3D::COUNT * Coordinates::COUNT], const double determinant, double* localJacobianMatrixElementIt)
     {
         *localJacobianMatrixElementIt = (transpJacobianMatrix[4] * transpJacobianMatrix[8] - transpJacobianMatrix[5] * transpJacobianMatrix[7]) / determinant;
@@ -25,6 +52,98 @@ namespace CoordinatesFunctions
         ++localJacobianMatrixElementIt;
         *localJacobianMatrixElementIt = (transpJacobianMatrix[0] * transpJacobianMatrix[4] - transpJacobianMatrix[1] * transpJacobianMatrix[3]) / determinant;
         ++localJacobianMatrixElementIt;
+    }
+
+    void copyTetrahedronsFacePoints(const uint8_t faceLocalIndex,
+                                    const Coordinates tetrahedronPoints[constants::tetrahedron::N_NODES],
+                                    Coordinates facePoints[constants::tetrahedron::N_NODES])
+    {
+        switch (faceLocalIndex)
+        {
+        case 0:
+        {
+            *facePoints = tetrahedronPoints[0];
+            *(++facePoints) = tetrahedronPoints[2];
+            *(++facePoints) = tetrahedronPoints[1];
+            break;
+        }
+        case 1:
+        {
+            *facePoints = tetrahedronPoints[0];
+            *(++facePoints) = tetrahedronPoints[1];
+            *(++facePoints) = tetrahedronPoints[3];
+            break;
+        }
+        case 2:
+        {
+            *facePoints = tetrahedronPoints[0];
+            *(++facePoints) = tetrahedronPoints[3];
+            *(++facePoints) = tetrahedronPoints[2];
+            break;
+        }
+        case 3:
+        {
+            *facePoints = tetrahedronPoints[3];
+            *(++facePoints) = tetrahedronPoints[1];
+            *(++facePoints) = tetrahedronPoints[2];
+            break;
+        }
+        }
+    }
+
+    void computeTetrahedronFaceDirections(const uint8_t faceLocalIndex, const Coordinates tetrahedronPoints[constants::tetrahedron::N_NODES], Coordinates directions[2])
+    {
+        switch (faceLocalIndex)
+        {
+        case 0:
+        {
+            computeDiffrence(tetrahedronPoints[2], tetrahedronPoints[0], directions[0]);
+            computeDiffrence(tetrahedronPoints[1], tetrahedronPoints[0], directions[1]);
+            break;
+        }
+        case 1:
+        {
+            computeDiffrence(tetrahedronPoints[1], tetrahedronPoints[0], directions[0]);
+            computeDiffrence(tetrahedronPoints[3], tetrahedronPoints[0], directions[1]);
+            break;
+        }
+        case 2:
+        {
+            computeDiffrence(tetrahedronPoints[3], tetrahedronPoints[0], directions[0]);
+            computeDiffrence(tetrahedronPoints[2], tetrahedronPoints[0], directions[1]);
+            break;
+        }
+        case 3:
+        {
+            computeDiffrence(tetrahedronPoints[1], tetrahedronPoints[3], directions[0]);
+            computeDiffrence(tetrahedronPoints[2], tetrahedronPoints[3], directions[1]);
+            break;
+        }
+        }
+    }
+
+    double computeTriagnleJacobianDet(const Coordinates triangleDirections[2])
+    {
+        const Coordinates* triangleDirection2 = triangleDirections + 1;
+        double e = triangleDirections->x * triangleDirections->x + triangleDirections->y * triangleDirections->y + triangleDirections->z * triangleDirections->z;
+        double g = triangleDirection2->x * triangleDirection2->x + triangleDirection2->y * triangleDirection2->y + triangleDirection2->z * triangleDirection2->z;
+        double f = triangleDirections->x * triangleDirection2->x + triangleDirections->y * triangleDirection2->y + triangleDirections->z * triangleDirection2->z;
+
+        return sqrt(e * g - f * f);
+    }
+
+    void computeNormalViaTriangleDirections(const Coordinates triangleDirections[2], Coordinates& normal)
+    {
+        const Coordinates* triangleDirection2 = triangleDirections + 1;
+        normal.x = triangleDirections->y * triangleDirection2->z - triangleDirections->z * triangleDirection2->y;
+        normal.y = triangleDirections->z * triangleDirection2->x - triangleDirections->x * triangleDirection2->z;
+        normal.z = triangleDirections->x * triangleDirection2->y - triangleDirections->y * triangleDirection2->x;
+
+        double norm = sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+
+        normal.x /= norm;
+        normal.y /= norm;
+        normal.z /= norm;
     }
 
     void computeLocalJacobianMatrixies(const double(*transpJacobianMatrixIt)[LocalCoordinates3D::COUNT * Coordinates::COUNT],

@@ -117,7 +117,22 @@ namespace GMSHProxy
                                          const int tag);
 
             void getTrianglesNodes(size_t(*&traianglesNodesTags)[constants::triangle::N_NODES], Coordinates(*&traianglesNodes)[constants::triangle::N_NODES], const int tag = DEFAULT_TAG);
+            
+            void getTetrahedronsNodes(const int tag,
+                                      size_t(*&tetrahedronsNodesTags)[constants::tetrahedron::N_NODES],
+                                      Coordinates(*&tetrahedronsNodes)[constants::tetrahedron::N_NODES],
+                                      size_t& nTertrahedrons);
 
+            void getSurfaceTriagles(const int tag,
+                                    size_t(*&traianglesNodesTags)[constants::triangle::N_NODES],
+                                    Coordinates(*&traianglesNodes)[constants::triangle::N_NODES],
+                                    size_t& nTriangles,
+                                    size_t*& facesTags);
+
+            void getSurfaceTriagles(const int tag,
+                                    size_t(*&traianglesNodesTags)[constants::triangle::N_NODES],
+                                    size_t& nTriangles,
+                                    size_t*& facesTags);
 
             void getIntegrationPoints(const int elementType,
                 const char integrationType[],
@@ -144,6 +159,16 @@ namespace GMSHProxy
             void getTetrahedronsFaces(const size_t(*nodesTags)[constants::tetrahedron::N_FACES][constants::triangle::N_NODES], const size_t nNodesTags, size_t(*&facesTags)[constants::tetrahedron::N_FACES]);
             void getTetrahedronsFaces(size_t(*&nodesTags)[constants::tetrahedron::N_FACES][constants::triangle::N_NODES],
                                       size_t(*&facesTags)[constants::tetrahedron::N_FACES],
+                                      size_t& nFaces,
+                                      const int entityTag);
+
+            void getTetrahedronsFaces(const int entityTag,
+                                      size_t(*&nodesTags)[constants::triangle::N_NODES],
+                                      size_t*& facesTags,
+                                      size_t& nFaces);
+
+            void getTetrahedronsFaces(size_t*& nodesTags,
+                                      size_t*& facesTags,
                                       size_t& nFaces,
                                       const int entityTag);
 

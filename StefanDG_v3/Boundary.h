@@ -1,5 +1,7 @@
 #pragma once
-
+#include "Coordinates.h"
+#include "LocalCoordinates3D.h"
+#include "GeometryConstants.h"
 struct Boundary
 {
 	struct Condition
@@ -36,6 +38,14 @@ struct Boundary
 				++values;
 			}
 		}
+	};
+
+	struct MeshBuffer
+	{
+		size_t* indexes;
+		size_t (*facesNodesTags)[constants::triangle::N_NODES];
+		double (*elementsLocalJacobians)[LocalCoordinates3D::COUNT * Coordinates::COUNT];
+		bool isSet;
 	};
 
 	/*

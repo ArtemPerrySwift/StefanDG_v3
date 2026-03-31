@@ -84,5 +84,9 @@ namespace DTGeometryKernel
     bool computeChangingIndexes(const size_t original[constants::triangle::N_NODES],
                                 const size_t comparison[constants::triangle::N_NODES],
                                 uint8_t changingIndexes[constants::triangle::N_NODES]);
+
+    uint8_t computeChangingIndexes(const size_t original[constants::triangle::N_NODES], const size_t comparison[constants::triangle::N_NODES]);
+
+    bool isTrianglesCooriented(const size_t triangle1[constants::triangle::N_NODES], const size_t triangle2[constants::triangle::N_NODES]);
 };
 

@@ -151,6 +151,8 @@
     <ClInclude Include="Bases.h" />
     <ClInclude Include="BoundariesConditions.h" />
     <ClInclude Include="Boundary.h" />
+    <ClInclude Include="CommonFragmentAdjusments.h" />
+    <ClInclude Include="CommonFragmentAdjusmentsBase.h" />
     <ClInclude Include="ConformInterface.h" />
     <ClInclude Include="Container.h" />
     <ClInclude Include="Coordinates.h" />
@@ -174,6 +176,7 @@
     <ClInclude Include="Model.h" />
     <ClInclude Include="NonconformInterface.h" />
     <ClInclude Include="NumericalIntegration.h" />
+    <ClInclude Include="SharedBoundary.h" />
     <ClInclude Include="Solution.h" />
     <ClInclude Include="TetrahedronsAdjusments.h" />
     <ClInclude Include="Volume.h" />

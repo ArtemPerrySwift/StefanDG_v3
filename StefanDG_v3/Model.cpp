@@ -361,9 +361,9 @@ void Model::initilizeByCurrentGMSHModel()
     nonconformInterfaces = nonconformInterfacesBegin;
     bool* wasNonconfromInterfaceProcessed = new bool[nNonconformInterfaces] {};
 
-    ConformInterface* conformInterfacesBegin = new ConformInterface[nConformInterfaces];
-    conformInterfaces = conformInterfacesBegin;
-    bool* wasConfromInterfaceProcessed = new bool[nNonconformInterfaces] {};
+    SharedBoundary* sharedBoundaryBegin = new SharedBoundary[nSharedBoundaries];
+    sharedBoundaries = sharedBoundaryBegin;
+    bool* wasSharedBoundaryProcessed = new bool[nSharedBoundaries] {};
 
     unsigned nVolumes;
     int* volumesDimTags;
@@ -467,18 +467,20 @@ void Model::initilizeByCurrentGMSHModel()
                 }
             }
 
-            if (boundaryPtr->condition->type == Boundary::Condition::Type::CONFORM_INTERFACE)
+            if (boundaryPtr->isShared)
             {
                 unsigned int index = boundaryPtr->condition->typeData.index;
-                ConformInterface* nonconformInterface = conformInterfacesBegin + index;
-                if (wasNonconfromInterfaceProcessed[index])
+                SharedBoundary* sharedBoundaryPtr = sharedBoundaryBegin + boundaryPtr->condition->typeData.index;
+                if (wasSharedBoundaryProcessed[index])
                 {
-                    nonconformInterface->volumesIndexes[1] = i;
+                    sharedBoundaryPtr->volumesIndexes[1] = j;
                 }
                 else
                 {
-                    nonconformInterface->thermalConductivity = volumeIt->materialPhasePtr->thermalConductivity;
-                    nonconformInterface->volumesIndexes[0] = i;
+                    sharedBoundaryPtr->tag = boundaryPtr->tag;
+                    sharedBoundaryPtr->isPlane = boundaryPtr->isPlane;
+                    sharedBoundaryPtr->condition = boundaryPtr->condition;
+                    sharedBoundaryPtr->volumesIndexes[0] = j;
                 }
             }
 
@@ -494,7 +496,7 @@ void Model::initilizeByCurrentGMSHModel()
     delete[] materialPhaseByVolumeTag;
     delete[] boundariesMap;
     delete[] wasNonconfromInterfaceProcessed;
-    delete[] wasConfromInterfaceProcessed;
+    delete[] wasSharedBoundaryProcessed;
 
     GMSHProxy::free(volumesDimTags);
     GMSHProxy::free(volumesBoundariesDimTags);

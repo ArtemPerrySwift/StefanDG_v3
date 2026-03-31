@@ -3,10 +3,16 @@
 
 struct FacesSet
 {
-	const size_t* nodesTags;
-	const size_t* elementIndexes;
-	const uint8_t* localindexes;
+	union ConditionRelated
+	{
+		int entityTag;
+		double* firstElementNormal;
+	};
+
+	const size_t indexes;
+	//const size_t* elementIndexes;
+	//const uint8_t* localindexes;
 	size_t count;
 
-	size_t* tagsBuffer;
+	//size_t* tagsBuffer;
 };

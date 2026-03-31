@@ -3,6 +3,8 @@
 #include "GMSHProxy.h"
 #include "FacesSet.h"
 #include <algorithm>
+#include "SharedBoundary.h"
+#include "CommonFragmentAdjusments.h"
 
 template<size_t N_FUNCTIONS>
 static void computeTetrahedronAdjusments(const double* massMatrixElementIt, const double gamma, const double* stiffnessMatrixElementIt, const double lambda, const double* trackPowerVectorElementIt, const double determinant, double* bilinearAdjusmentIt, double* linearAdjusmentIt)
@@ -134,7 +136,119 @@ void computeInteriorFaceCrossAdjusmets(const double* crossFlowMatrix1ElementIt,
     }
 }
 
+void computeInteriorFacesAdjusments(const int entityTag,
+                                    const size_t* facesIndexIt,
+                                    const size_t nFaces,
+                                    const size_t tetrahedronsFacesNodesTags[],
+                                    const double lambda,
+                                    const double penalty,
+                                    const double localJacobianMatrix[][LocalCoordinates3D::COUNT * Coordinates::COUNT],
+                                    void* memoryBuffer,
+                                    double(bilinearTetrahedronsAdjusments)[][FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS],
+                                    double(*bilinearInterfaceAdjusmentsIt)[FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS])
+{
+    const double* const* massMatrixByFace = FaceDGCalculator<Basis>::getMassMatrixies();
+    const double (*crossMassMatrixies)[constants::tetrahedron::N_FACES][FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS] = FaceDGCalculator<Basis>::getCrossMassMatrixies();
 
+    const LocalCoordinates3D(*gradientsByFace)[FaceDGCalculator<Basis>::N_BASIS_VALUES] = FaceDGCalculator<Basis>::getLocalGradientsByFace();
+
+    double* flowMatrix = (double*)memoryBuffer;
+    double* crossFlowMatrix1 = flowMatrix + FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS;
+    double* crossFlowMatrix2 = crossFlowMatrix1 + FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS;
+    double* normalDerivatives = crossFlowMatrix2 + FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS;
+    double* basisValuesBuffer = normalDerivatives + NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::nSteps;
+
+    Coordinates* gradients = (Coordinates*)(basisValuesBuffer + NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::nSteps);
+
+    double (*transpJacobianMatrixies)[Coordinates::COUNT * LocalCoordinates3D::COUNT];
+    double* determinants;
+    Coordinates* initPoints;
+    GMSHProxy::model::mesh::getTriangleJacobians(transpJacobianMatrixies, determinants, initPoints, entityTag);
+
+    const double (*transpJacobianMatrixIt)[Coordinates::COUNT * LocalCoordinates3D::COUNT] = transpJacobianMatrixies;
+    const double* determinantIt = determinants;
+    const Coordinates* initPointIt = initPoints;
+
+    size_t(*facesNodesTags)[constants::triangle::N_NODES];
+    Coordinates(*facesNodes)[constants::triangle::N_NODES];
+    GMSHProxy::model::mesh::getTrianglesNodes(facesNodesTags, facesNodes, entityTag);
+
+    Coordinates(*faceNodesIt)[constants::triangle::N_NODES] = facesNodes;
+    const size_t(*facesNodesTagsIt)[constants::triangle::N_NODES] = facesNodesTags;
+    uint8_t changingIndexes[constants::triangle::N_NODES];
+
+    for (size_t faceIndex = 0; faceIndex < nFaces; ++faceIndex)
+    {
+        double facePenalty = penalty /*/ geom_funct::computeTriangleDiametr(*transpMatrixiesIt, determinant); ++transpMatrixiesIt*/;
+        double commonMultiplier = *determinantIt * lambda;
+
+        Coordinates normal;
+        CoordinatesFunctions::computeNormal(*faceNodesIt, normal);
+
+        size_t elementIndex0 = *facesIndexIt >> 2;
+        uint8_t localIndex0 = *facesIndexIt && 3;
+        ++facesIndexIt;
+
+        size_t elementIndex1 = *facesIndexIt >> 2;
+        uint8_t localIndex1 = *facesIndexIt && 3;
+        const size_t* faceNodesAnotherSide = tetrahedronsFacesNodesTags + *facesIndexIt * constants::triangle::N_NODES;
+        ++facesIndexIt;
+
+        CoordinatesFunctions::translate(localJacobianMatrix[elementIndex0],
+            gradientsByFace[localIndex0],
+            NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::nSteps,
+            gradients);
+
+        CoordinatesFunctions::coomputeDirectionalDerivative(gradients, FaceDGCalculator<Basis>::N_BASIS_VALUES, normal, normalDerivatives);
+
+        FaceDGCalculator<Basis>::computeFlowMatrix(localIndex0, normalDerivatives, flowMatrix);
+        addInteriorFaceAdjusmets<Basis::N_FUNCTIONS>(flowMatrix, massMatrixByFace[localIndex0], penalty, commonMultiplier, bilinearTetrahedronsAdjusments[elementIndex0]);
+
+        DTGeometryKernel::computeChangingIndexes(*facesNodesTagsIt, faceNodesAnotherSide, changingIndexes);
+        NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::changeValuesOrder(normalDerivatives, Basis::N_FUNCTIONS, changingIndexes);
+
+        FaceDGCalculator<Basis>::computeFlowMatrix(localIndex1, normalDerivatives, crossFlowMatrix1);
+
+        normal.x = -normal.x;
+        normal.y = -normal.y;
+        normal.z = -normal.z;
+
+        CoordinatesFunctions::translate(localJacobianMatrix[elementIndex1],
+            gradientsByFace[localIndex1],
+            NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::nSteps,
+            gradients);
+
+        CoordinatesFunctions::coomputeDirectionalDerivative(gradients, FaceDGCalculator<Basis>::N_BASIS_VALUES, normal, normalDerivatives);
+
+        FaceDGCalculator<Basis>::computeFlowMatrix(localIndex1, normalDerivatives, flowMatrix);
+        addInteriorFaceAdjusmets<Basis::N_FUNCTIONS>(flowMatrix, massMatrixByFace[localIndex1], penalty, commonMultiplier, bilinearTetrahedronsAdjusments[elementIndex1]);
+
+        DTGeometryKernel::computeChangingIndexes(faceNodesAnotherSide, *facesNodesTagsIt, changingIndexes);
+        NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::changeValuesOrder(normalDerivatives, Basis::N_FUNCTIONS, changingIndexes);
+        FaceDGCalculator<Basis>::computeFlowMatrix(localIndex0, normalDerivatives, crossFlowMatrix2);
+
+        computeInteriorFaceCrossAdjusmets<Basis::N_FUNCTIONS>(crossFlowMatrix2,
+            crossFlowMatrix1,
+            crossMassMatrixies[localIndex0][localIndex1],
+            facePenalty,
+            commonMultiplier,
+            *bilinearInterfaceAdjusmentsIt);
+
+        ++bilinearInterfaceAdjusmentsIt;
+        ++determinantIt;
+        ++faceNodesIt;
+        ++facesNodesTagsIt;
+    }
+
+    GMSHProxy::free(facesNodesTags);
+    GMSHProxy::free(transpJacobianMatrixies);
+    GMSHProxy::free(determinants);
+    GMSHProxy::free(initPoints);
+    GMSHProxy::free(facesNodes);
+
+}
+
+/*
 void computeInteriorFacesAdjusments(const int interiorFacesEntityTag,
                                     const FacesSet &interiorFacesSet,
                                     const double lambda,
@@ -178,7 +292,7 @@ void computeInteriorFacesAdjusments(const int interiorFacesEntityTag,
     size_t nFaces = interiorFacesSet.count;
     for (size_t faceIndex = 0; faceIndex < nFaces; ++faceIndex)
     {
-        double facePenalty = penalty /*/ geom_funct::computeTriangleDiametr(*transpMatrixiesIt, determinant); ++transpMatrixiesIt*/;
+        double facePenalty = penalty; // geom_funct::computeTriangleDiametr(*transpMatrixiesIt, determinant); ++transpMatrixiesIt;
         double commonMultiplier = *determinantIt * lambda;
 
         Coordinates normal;
@@ -234,7 +348,7 @@ void computeInteriorFacesAdjusments(const int interiorFacesEntityTag,
     GMSHProxy::free(facesNodes);
 
 }
-
+*/
 template<size_t N_FUNCTIONS>
 static void addDirichletFaceBilinearAdjusmets(const double* flowMatrixElementIt, const double* massMatrixElementIt, const double penaltyCoeff, const double detLambdaCoeff, double* adjusmentIt)
 {
@@ -915,6 +1029,134 @@ void computeTetrahedronsAdjusments(const double(*localJacobianMatrixIt)[LocalCoo
 
 }
 
+void processElements(const Coordinates(*elementsNodes)[constants::tetrahedron::N_NODES],
+                         const size_t nElements,
+                         const MaterialPhase& materialPhase,
+                         const double dt,
+                         void* memoryBuffer,
+                         double(*localJacobianMatrixIt)[LocalCoordinates3D::COUNT * Coordinates::COUNT],
+                         double(*initialXIt)[Basis::N_FUNCTIONS],
+                         double(*bilinearTetrahedronsAdjusmentsIt)[ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS],
+                         double(*linearTetrahedronsAdjusmentsIt)[Basis::N_FUNCTIONS])
+{
+    const double* templateMassMatrix = ElementDGCalculator<Basis>::getMassMatrix();
+    double* stiffnessMatrix = (double*)memoryBuffer;
+    double* localVector = stiffnessMatrix + ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS;
+
+    double* initlialConditionValues = localVector + Basis::N_FUNCTIONS;
+
+    const LocalCoordinates3D* localGradients = ElementDGCalculator<Basis>::getIntegrationLocalGradients();
+    Coordinates* gradients = (Coordinates*)(initlialConditionValues + NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps);
+
+    const double lambda = materialPhase.thermalConductivity;
+    const double massCoeff = materialPhase.heatCapacity * materialPhase.density / dt;
+
+    double transpJacobian[LocalCoordinates3D::COUNT * Coordinates::COUNT];
+    const LLt* massSLAESolverPtr = ElementDGCalculator<Basis>::getMassSLAESolverPtr();
+    if (materialPhase.state == MaterialPhase::LIQUID)
+    {
+        for (size_t tetrahedronIndex = 0; tetrahedronIndex < nElements; tetrahedronIndex++)
+        {
+            double det = CoordinatesFunctions::computeTranspJacobianMatrix(*elementsNodes, transpJacobian);
+            CoordinatesFunctions::computeLocalJacobianMatrix(transpJacobian, det, *localJacobianMatrixIt);
+
+            CoordinatesFunctions::translate(*localJacobianMatrixIt, localGradients, NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps, gradients);
+            ElementDGCalculator<Basis>::computeStiffnessMatrix(gradients, stiffnessMatrix);
+
+            Coordinates point;
+            const LocalCoordinates3D* integrationLocalPointIt = NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::localPoints;
+            double* initlialConditionValueIt = initlialConditionValues;
+            for (uint8_t i = 0; i < NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps; ++i)
+            {
+                point = **elementsNodes;
+                point.x += transpJacobian[0] * integrationLocalPointIt->u;
+                point.y += transpJacobian[1] * integrationLocalPointIt->u;
+                point.z += transpJacobian[2] * integrationLocalPointIt->u;
+
+                point.x += transpJacobian[3] * integrationLocalPointIt->v;
+                point.y += transpJacobian[4] * integrationLocalPointIt->v;
+                point.z += transpJacobian[5] * integrationLocalPointIt->v;
+
+                point.x += transpJacobian[6] * integrationLocalPointIt->w;
+                point.y += transpJacobian[7] * integrationLocalPointIt->w;
+                point.z += transpJacobian[8] * integrationLocalPointIt->w;
+
+                *initlialConditionValueIt = DGStefanTask::initialConditionLiquid(point);
+                ++initlialConditionValueIt;
+                ++integrationLocalPointIt;
+            }
+
+            ElementDGCalculator<Basis>::computePowerVector(initlialConditionValues, localVector);
+            massSLAESolverPtr->solve(localVector, *initialXIt);
+
+            computeTetrahedronAdjusments<Basis::N_FUNCTIONS>(templateMassMatrix,
+                massCoeff,
+                stiffnessMatrix,
+                lambda,
+                localVector,
+                det,
+                *bilinearTetrahedronsAdjusmentsIt,
+                *linearTetrahedronsAdjusmentsIt);
+
+            ++initialXIt;
+            ++localJacobianMatrixIt;
+
+            ++bilinearTetrahedronsAdjusmentsIt;
+            ++linearTetrahedronsAdjusmentsIt;
+        }
+    }
+    else
+    {
+        double det = CoordinatesFunctions::computeTranspJacobianMatrix(*elementsNodes, transpJacobian);
+        CoordinatesFunctions::computeLocalJacobianMatrix(transpJacobian, det, *localJacobianMatrixIt);
+
+        CoordinatesFunctions::translate(*localJacobianMatrixIt, localGradients, NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps, gradients);
+        ElementDGCalculator<Basis>::computeStiffnessMatrix(gradients, stiffnessMatrix);
+
+        Coordinates point;
+        const LocalCoordinates3D* integrationLocalPointIt = NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::localPoints;
+        double* initlialConditionValueIt = initlialConditionValues;
+        for (uint8_t i = 0; i < NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps; ++i)
+        {
+            point = **elementsNodes;
+            point.x += transpJacobian[0] * integrationLocalPointIt->u;
+            point.y += transpJacobian[1] * integrationLocalPointIt->u;
+            point.z += transpJacobian[2] * integrationLocalPointIt->u;
+
+            point.x += transpJacobian[3] * integrationLocalPointIt->v;
+            point.y += transpJacobian[4] * integrationLocalPointIt->v;
+            point.z += transpJacobian[5] * integrationLocalPointIt->v;
+
+            point.x += transpJacobian[6] * integrationLocalPointIt->w;
+            point.y += transpJacobian[7] * integrationLocalPointIt->w;
+            point.z += transpJacobian[8] * integrationLocalPointIt->w;
+
+            *initlialConditionValueIt = DGStefanTask::initialConditionSolid(point);
+            ++initlialConditionValueIt;
+            ++integrationLocalPointIt;
+        }
+
+        ElementDGCalculator<Basis>::computePowerVector(initlialConditionValues, localVector);
+        massSLAESolverPtr->solve(localVector, *initialXIt);
+
+        computeTetrahedronAdjusments<Basis::N_FUNCTIONS>(templateMassMatrix,
+            massCoeff,
+            stiffnessMatrix,
+            lambda,
+            localVector,
+            det,
+            *bilinearTetrahedronsAdjusmentsIt,
+            *linearTetrahedronsAdjusmentsIt);
+
+        ++initialXIt;
+        ++localJacobianMatrixIt;
+
+        ++bilinearTetrahedronsAdjusmentsIt;
+        ++linearTetrahedronsAdjusmentsIt;
+    }
+
+}
+
 void preprocess(const Volume* volumeIt, const unsigned int nVolumes, size_t** volumeElementsTagsSetIt, size_t* nVolumeElementsIt, size_t &nElementsAdjusments, size_t &nDOFs)
 {
     size_t nElements = 0;
@@ -928,72 +1170,644 @@ void preprocess(const Volume* volumeIt, const unsigned int nVolumes, size_t** vo
     nDOFs = nElements * Basis::N_FUNCTIONS;
 }
 
+size_t processFaces(const const Volume& volume,
+    const double penalty,
+    const size_t elementsNodesTags[][constants::tetrahedron::N_NODES],
+    const Coordinates elementsNodes[][constants::tetrahedron::N_NODES],
+    const double localJacobianMatrixes[][LocalCoordinates3D::COUNT * Coordinates::COUNT],
+    double elementsBilinearAdjusments[][ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS],
+    SharedBoundary::MeshBuffer sharedBoundariesMeshBuffers[],
+    Boundary::MeshBuffer nonconformalInterfacesSidesMehsBuffers[][2],
+    void* memoryBuffer)
+{
+    size_t(*tetrahedronsFacesNodesTags)[constants::triangle::N_NODES];
+    size_t* tetrahedronsFacesTags;
+    size_t nTetrahedronsFaces;
+
+    GMSHProxy::model::mesh::getTetrahedronsFaces(volume.tag, tetrahedronsFacesNodesTags, tetrahedronsFacesTags, nTetrahedronsFaces);
+
+    CommonFragmentAdjusments<Basis::N_FUNCTIONS, Basis::N_FUNCTIONS>* interiorFacesAdjusmentsIt =
+        (CommonFragmentAdjusments<Basis::N_FUNCTIONS, Basis::N_FUNCTIONS>*)malloc((nTetrahedronsFaces >> 1) * sizeof(CommonFragmentAdjusments<Basis::N_FUNCTIONS, Basis::N_FUNCTIONS>));
+
+    size_t(*faceIndexByFaceTagMapBegin)[2] = (size_t(*)[2])calloc(nTetrahedronsFaces, 2 * sizeof(size_t));
+    size_t(*faceIndexByFaceTagMapLastElement)[2] = faceIndexByFaceTagMapBegin + nTetrahedronsFaces - 1;
+
+    size_t nInteriorFaces = 0;
+
+    {
+        double lambda = volume.materialPhasePtr->thermalConductivity;
+
+        const double* const* massMatrixByFace = FaceDGCalculator<Basis>::getMassMatrixies();
+        const double (*crossMassMatrixies)[constants::tetrahedron::N_FACES][FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS] = FaceDGCalculator<Basis>::getCrossMassMatrixies();
+
+        const LocalCoordinates3D(*gradientsByFace)[FaceDGCalculator<Basis>::N_BASIS_VALUES] = FaceDGCalculator<Basis>::getLocalGradientsByFace();
+
+        double* flowMatrix = (double*)memoryBuffer;
+        double* crossFlowMatrix1 = flowMatrix + FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS;
+        double* crossFlowMatrix2 = crossFlowMatrix1 + FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS;
+        double* normalDerivatives = crossFlowMatrix2 + FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS;
+        double* basisValuesBuffer = normalDerivatives + FaceDGCalculator<Basis>::N_BASIS_VALUES;
+
+        Coordinates* gradients = (Coordinates*)(basisValuesBuffer + FaceDGCalculator<Basis>::N_BASIS_VALUES);
+        Coordinates triangleDirections[2];
+        size_t* tetrahedronsFacesTagIt = tetrahedronsFacesTags;
+
+        for (size_t i = 0; i < nTetrahedronsFaces; ++i)
+        {
+            size_t(*faceIndexByFaceTagIt)[2] = faceIndexByFaceTagMapBegin + *tetrahedronsFacesTagIt % nTetrahedronsFaces;
+
+            while (**faceIndexByFaceTagIt != *tetrahedronsFacesTagIt || **faceIndexByFaceTagIt != 0 || faceIndexByFaceTagIt != faceIndexByFaceTagMapLastElement)
+            {
+                ++faceIndexByFaceTagIt;
+            }
+
+            if (faceIndexByFaceTagIt == faceIndexByFaceTagMapLastElement && **faceIndexByFaceTagIt != *tetrahedronsFacesTagIt && **faceIndexByFaceTagIt != 0)
+            {
+                while (**faceIndexByFaceTagIt != *tetrahedronsFacesTagIt || **faceIndexByFaceTagIt != 0)
+                {
+                    ++faceIndexByFaceTagIt;
+                }
+            }
+
+            if (**faceIndexByFaceTagIt == 0)
+            {
+                **faceIndexByFaceTagIt = *tetrahedronsFacesTagIt;
+                (*faceIndexByFaceTagIt)[1] = i;
+            }
+            else
+            {
+                double facePenalty = penalty /*/ geom_funct::computeTriangleDiametr(*transpMatrixiesIt, determinant); ++transpMatrixiesIt*/;
+
+                size_t iFirst = (*faceIndexByFaceTagIt)[1];
+                size_t elementIndex0 = iFirst >> 2;
+                uint8_t localIndex0 = iFirst && 3;
+
+                size_t elementIndex1 = i >> 2;
+                uint8_t localIndex1 = i && 3;
+
+                interiorFacesAdjusmentsIt->elementsIndexes[0] = elementIndex0;
+                interiorFacesAdjusmentsIt->elementsIndexes[1] = elementIndex1;
+
+                size_t* faceNodesTags1 = tetrahedronsFacesNodesTags[iFirst];
+                size_t* faceNodesTags2 = tetrahedronsFacesNodesTags[i];
+
+                Coordinates normal;
+                CoordinatesFunctions::computeTetrahedronFaceDirections(localIndex0, elementsNodes[elementIndex0], triangleDirections);
+                CoordinatesFunctions::computeNormalViaTriangleDirections(triangleDirections, normal);
+
+                double commonMultiplier = lambda * CoordinatesFunctions::computeTriagnleJacobianDet(triangleDirections);
+
+                CoordinatesFunctions::translate(localJacobianMatrixes[elementIndex0],
+                    gradientsByFace[localIndex0],
+                    NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::nSteps,
+                    gradients);
+
+                CoordinatesFunctions::coomputeDirectionalDerivative(gradients, FaceDGCalculator<Basis>::N_BASIS_VALUES, normal, normalDerivatives);
+
+                FaceDGCalculator<Basis>::computeFlowMatrix(localIndex0, normalDerivatives, flowMatrix);
+                addInteriorFaceAdjusmets<Basis::N_FUNCTIONS>(flowMatrix, massMatrixByFace[localIndex0], facePenalty, commonMultiplier, elementsBilinearAdjusments[elementIndex0]);
+
+                uint8_t changingIndexes = DTGeometryKernel::computeChangingIndexes(faceNodesTags2, faceNodesTags1);
+                if (changingIndexes != 0)
+                {
+                    NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::changeValuesOrder(normalDerivatives, Basis::N_FUNCTIONS, changingIndexes);
+                }
+
+
+                FaceDGCalculator<Basis>::computeFlowMatrix(localIndex1, normalDerivatives, crossFlowMatrix1);
+
+                normal.x = -normal.x;
+                normal.y = -normal.y;
+                normal.z = -normal.z;
+
+                CoordinatesFunctions::translate(localJacobianMatrixes[elementIndex1],
+                    gradientsByFace[localIndex1],
+                    NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::nSteps,
+                    gradients);
+
+                CoordinatesFunctions::coomputeDirectionalDerivative(gradients, FaceDGCalculator<Basis>::N_BASIS_VALUES, normal, normalDerivatives);
+
+                FaceDGCalculator<Basis>::computeFlowMatrix(localIndex1, normalDerivatives, flowMatrix);
+                addInteriorFaceAdjusmets<Basis::N_FUNCTIONS>(flowMatrix, massMatrixByFace[localIndex1], facePenalty, commonMultiplier, elementsBilinearAdjusments[elementIndex1]);
+
+                changingIndexes = DTGeometryKernel::computeChangingIndexes(faceNodesTags1, faceNodesTags2);
+                if (changingIndexes != 0)
+                {
+                    NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::changeValuesOrder(normalDerivatives, Basis::N_FUNCTIONS, changingIndexes);
+                }
+
+                FaceDGCalculator<Basis>::computeFlowMatrix(localIndex0, normalDerivatives, crossFlowMatrix2);
+
+                computeInteriorFaceCrossAdjusmets<Basis::N_FUNCTIONS>(crossFlowMatrix2,
+                    crossFlowMatrix1,
+                    crossMassMatrixies[localIndex0][localIndex1],
+                    facePenalty,
+                    commonMultiplier,
+                    interiorFacesAdjusmentsIt->bilinear);
+
+                ++nInteriorFaces;
+            }
+        }
+    }
+
+
+    const Boundary* boundaryIt = volume.boundaries;
+    for (size_t j = 0; j < volume.nBoundaries; ++j)
+    {
+        if (boundaryIt->condition->type != Boundary::Condition::Type::HOMOGENEOUS_NEWMAN)
+        {
+            size_t* boundaryFacesTags;
+            size_t nBoundaryFaces;
+            if (boundaryIt->isShared)
+            {
+                switch (boundaryIt->condition->type)
+                {
+                case Boundary::Condition::Type::CONFORM_INTERFACE:
+                case Boundary::Condition::Type::DIRICHLET_FUNCTION:
+                {
+                    break;
+                }
+
+                case Boundary::Condition::Type::STEFAN:
+                case Boundary::Condition::Type::DIRICHLET_VALUE:
+                {
+                }
+
+                case Boundary::Condition::Type::NEWMAN_FUNCTION:
+                {
+                    break;
+                }
+
+                case Boundary::Condition::Type::NEWMAN_VALUE:
+                {
+
+                    break;
+                }
+                }
+            }
+            else
+            {
+                GMSHProxy::model::mesh::getSurfaceTriagles
+                switch (boundaryIt->condition->type)
+                {
+                case Boundary::Condition::Type::DIRICHLET_FUNCTION:
+                {
+                    const double* const* templatePenaltyMatrixByFace = FaceDGCalculator<Basis>::getMassMatrixies();
+                    const LocalCoordinates3D(*gradientsByFace)[FaceDGCalculator<Basis>::N_BASIS_VALUES] = FaceDGCalculator<Basis>::getLocalGradientsByFace();
+                    double* flowMatrix = (double*)memoryBuffer;
+
+                    double* flowVector = flowMatrix + FaceDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS;
+                    double* powerVector = flowVector + Basis::N_FUNCTIONS;
+
+                    double* dirichletValues = powerVector + Basis::N_FUNCTIONS;
+                    double* normalDerivatives = dirichletValues + NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps;
+
+                    Coordinates* integrationPoints = (Coordinates*)(normalDerivatives + NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps);
+                    Coordinates* integrationPointsEndIt = integrationPoints + NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps;
+                    Coordinates* gradients = integrationPointsEndIt;
+
+                    size_t nFaces = boundaryFacesSet.count;
+                    for (size_t faceIndex = 0; faceIndex < nFaces; ++faceIndex)
+                    {
+
+                        double determinant = *determinantIt;
+                        double facePenalty = penalty /*/ geom_funct::computeTriangleDiametr(transpMatrixies_[iTriangle], determinant)*/;
+                        double commonMultiplier = determinant * lambda;
+
+
+                        CoordinatesFunctions::translate(localJacobianMatrix[*boundaryFaceTetrahedronIndexIt],
+                            gradientsByFace[*boundaryFacesLocalIndexesIt],
+                            NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::nSteps,
+                            gradients);
+
+                        CoordinatesFunctions::coomputeDirectionalDerivative(gradients, FaceDGCalculator<Basis>::N_BASIS_VALUES, outwardNormal, normalDerivatives);
+
+                        FaceDGCalculator<Basis>::computeFlowMatrix(*boundaryFacesLocalIndexesIt, normalDerivatives, flowMatrix);
+                        addDirichletFaceBilinearAdjusmets<Basis::N_FUNCTIONS>(flowMatrix,
+                            templatePenaltyMatrixByFace[*boundaryFacesLocalIndexesIt],
+                            facePenalty,
+                            commonMultiplier,
+                            bilinearTetrahedronsAdjusments[*boundaryFaceTetrahedronIndexIt]);
+
+                        CoordinatesFunctions::translate(NumericalIntegration::Triangle::Gauss<Basis::ORDER + 1>::localPoints,
+                            NumericalIntegration::Tetrahedron::Gauss<Basis::ORDER + 1>::nSteps,
+                            *initPointIt,
+                            *transpJacobianMatrixIt,
+                            integrationPoints);
+
+                        std::transform(integrationPoints, integrationPointsEndIt, dirichletValues, dirichletCondition);
+
+                        FaceDGCalculator<Basis>::computeFlowVector(normalDerivatives, dirichletValues, flowVector);
+                        FaceDGCalculator<Basis>::computePowerVector(*boundaryFacesLocalIndexesIt, dirichletValues, powerVector);
+
+                        addDirichletFaceLinearAdjusments<Basis::N_FUNCTIONS>(powerVector, flowVector, facePenalty, commonMultiplier, linearTetrahedronsAdjusments[*boundaryFaceTetrahedronIndexIt]);
+
+                        ++boundaryFaceTetrahedronIndexIt;
+                        ++boundaryFacesLocalIndexesIt;
+                        ++determinantIt;
+                        ++initPointIt;
+                    }
+
+                    break;
+                }
+
+                case Boundary::Condition::Type::DIRICHLET_VALUE:
+                {
+
+                    break;
+                }
+
+                case Boundary::Condition::Type::NEWMAN_FUNCTION:
+                {
+                    break;
+                }
+
+                case Boundary::Condition::Type::NEWMAN_VALUE:
+                {
+                    break;
+                }
+
+                case Boundary::Condition::Type::STEFAN:
+                {
+                    break;
+                }
+
+                case Boundary::Condition::Type::NONCONFORM_INTERFACE:
+                {
+                    break;
+                }
+
+                case Boundary::Condition::Type::HOMOGENEOUS_NEWMAN:
+                {
+                    break;
+                }
+
+                }
+            }
+
+        } 
+
+    }
+}
+    //size_t preprocessFaces(const size_t * tetrahedronsFacesTagIt,
+    //    const size_t nTetrahedronsFaces,
+    //    std::pair<size_t, size_t>*const faceIndexByFaceTagMapBegin,
+    //    size_t * interiorFacesIndexIt)
+    //{
+    //    const std::pair<size_t, size_t>* faceIndexByFaceTagMapLast = faceIndexByFaceTagMapBegin + nTetrahedronsFaces - 1;
+    //    size_t nInteriorFaces = 0;
+
+    //    for (size_t i = 0; i < nTetrahedronsFaces; ++i)
+    //    {
+    //        std::pair<size_t, size_t>* faceIndexByFaceTagIt = faceIndexByFaceTagMapBegin + *tetrahedronsFacesTagIt % nTetrahedronsFaces;
+
+    //        while (faceIndexByFaceTagIt->first != *tetrahedronsFacesTagIt || faceIndexByFaceTagIt->first != 0 || faceIndexByFaceTagIt != faceIndexByFaceTagMapLast)
+    //        {
+    //            ++faceIndexByFaceTagIt;
+    //        }
+
+    //        if (faceIndexByFaceTagIt == faceIndexByFaceTagMapLast && faceIndexByFaceTagIt->first != *tetrahedronsFacesTagIt && faceIndexByFaceTagIt->first != 0)
+    //        {
+    //            while (faceIndexByFaceTagIt->first != *tetrahedronsFacesTagIt || faceIndexByFaceTagIt->first != 0)
+    //            {
+    //                ++faceIndexByFaceTagIt;
+    //            }
+    //        }
+
+    //        if (faceIndexByFaceTagIt->first == 0)
+    //        {
+    //            faceIndexByFaceTagIt->first = *tetrahedronsFacesTagIt;
+    //            faceIndexByFaceTagIt->second = i;
+    //        }
+    //        else
+    //        {
+    //            *interiorFacesIndexIt = faceIndexByFaceTagIt->second;
+    //            ++interiorFacesIndexIt;
+    //            *interiorFacesIndexIt = i;
+    //            ++interiorFacesIndexIt;
+
+    //            ++nInteriorFaces;
+    //        }
+    //        ++faceIndexByFaceTagIt;
+    //    }
+
+    //    return nInteriorFaces;
+    //}
+
 void computeVolumeAdjusments(const Volume& volume,
                              const double penalty,
                              const double dt,
-                             size_t nElements,
                              double bilinearElementsAdjusments[][ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS],
                              double linearElementsAdjusments[][Basis::N_FUNCTIONS],
                              double firstApproximation[][Basis::N_FUNCTIONS],
                              void* memoryBuffer,
-                             FacesSet* boundariesFacesSetsBuffer,
                              Container<size_t, size_t>* sharedBoundariesFacesTagsSets,
                              CrossElementsAdjusmentsSet& interiorFacesAdjuesmentsSet,
-                             NonconformInterface nonconformInterfaces[],
-                             InterfaceSideElementsSet nonconformalInterfaceSideElementsSetIt[][2])
+                             SharedBoundary::MeshBuffer sharedBoundariesMeshBuffers[],
+                             Boundary::MeshBuffer nonconformalInterfacesSidesMehsBuffers[][2])
 {
-        double (*transpJacobianMatrixes)[Coordinates::COUNT * LocalCoordinates3D::COUNT];
-        double* determinants;
-        Coordinates* elementsInitPoints;
+    size_t (*elementsNodesTags)[constants::tetrahedron::N_NODES];
+    Coordinates (*elementsNodes)[constants::tetrahedron::N_NODES];
+    size_t nElements;
 
-        GMSHProxy::model::mesh::getTetrahedronsJacobians(transpJacobianMatrixes, determinants, elementsInitPoints, volume.tag);
+    GMSHProxy::model::mesh::getTetrahedronsNodes(volume.tag, elementsNodesTags, elementsNodes, nElements);
 
-        double (*localJacobianMatrixes)[LocalCoordinates3D::COUNT * Coordinates::COUNT] = new double[nElements][LocalCoordinates3D::COUNT * Coordinates::COUNT];
-        CoordinatesFunctions::computeLocalJacobianMatrixies(transpJacobianMatrixes, nElements, determinants, localJacobianMatrixes);
+    double (*localJacobianMatrixes)[LocalCoordinates3D::COUNT * Coordinates::COUNT] = new double[nElements][LocalCoordinates3D::COUNT * Coordinates::COUNT];
 
-        computeTetrahedronsAdjusments(localJacobianMatrixes,
-                                      transpJacobianMatrixes,
-                                      determinants,
-                                      elementsInitPoints,
-                                      nElements,
-                                      *volume.materialPhasePtr,
-                                      dt,
-                                      memoryBuffer,
-                                      firstApproximation,
-                                      bilinearElementsAdjusments,
-                                      linearElementsAdjusments);
+    processElements(elementsNodes,
+        nElements,
+        *volume.materialPhasePtr,
+        dt,
+        memoryBuffer,
+        localJacobianMatrixes,
+        firstApproximation,
+        bilinearElementsAdjusments,
+        linearElementsAdjusments);
 
-        int interiorFacesEntityTag;
-        FacesSet interiorFacesSet;
-        FacesSet* boundariesFacesSets = boundariesFacesSetsBuffer;
+    size_t* tetrahedronsFacesNodesTags;
+    size_t* tetrahedronsFacesTags;
+    size_t nTetrahedronsFaces;
 
-        DTGeometryKernel::getVolumeFacesSets(volume.tag, volume.boundaries, volume.nBoundaries, interiorFacesEntityTag, interiorFacesSet, boundariesFacesSets, sharedBoundariesFacesTagsSets);
+    GMSHProxy::model::mesh::getTetrahedronsFaces(tetrahedronsFacesNodesTags, tetrahedronsFacesTags, nTetrahedronsFaces, volume.tag);
 
-        interiorFacesAdjuesmentsSet.elementIndexes = interiorFacesSet.elementIndexes;
-        interiorFacesAdjuesmentsSet.nCrossElements = interiorFacesSet.count;
+    size_t* interiorFacesIndexes = new size_t[nTetrahedronsFaces >> 1];
+    size_t* interiorFacesNodes = new size_t[(nTetrahedronsFaces >> 1) * 3];
+    size_t interiorFacesCount = 0;
 
-        double (*interiorFacesAdjusments)[ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS] = new double[interiorFacesSet.count][ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS];
-        interiorFacesAdjuesmentsSet.bilinear = (double*)interiorFacesAdjusments;
+    std::pair<size_t, size_t>* faceIndexByFaceTagMap = new std::pair<size_t, size_t>[nTetrahedronsFaces];
+    const std::pair<size_t, size_t>* faceIndexByFaceTagMapLast = faceIndexByFaceTagMap + nTetrahedronsFaces;
 
-        computeInteriorFacesAdjusments(interiorFacesEntityTag,
-                                       interiorFacesSet,
-                                       volume.materialPhasePtr->thermalConductivity,
-                                       penalty,
-                                       localJacobianMatrixes,
-                                       memoryBuffer,
-                                       bilinearElementsAdjusments,
-                                       interiorFacesAdjusments);
+    size_t* faceTagIt = tetrahedronsFacesTags;
+    size_t* interiorFaceIndexIt = interiorFacesIndexes;
+    size_t* interiorFaceNodeIt = interiorFacesNodes;
 
-        GMSHProxy::model::remove2DEntity(interiorFacesEntityTag);
-
-        delete[] interiorFacesSet.localindexes;
-        delete[] interiorFacesSet.nodesTags;
-
-
-        const Boundary* boundaryIt = volume.boundaries;
-        FacesSet* boundariesFacesSets = boundariesFacesSets;
-        for (size_t j = 0; j < volume.nBoundaries; ++j)
+    for (size_t iTetrahedron = 0, iFace = 0; iTetrahedron < nElements; ++iTetrahedron)
+    {
+        for (uint8_t iFaceLocal = 0; iFaceLocal < constants::tetrahedron::N_FACES; ++iFaceLocal, ++iFace)
         {
+            std::pair<size_t, size_t>* faceIndexByFaceTagIt = faceIndexByFaceTagMap + *faceTagIt % nTetrahedronsFaces;
+
+            while (faceIndexByFaceTagIt->first != *faceTagIt || faceIndexByFaceTagIt->first != 0 || faceIndexByFaceTagIt != faceIndexByFaceTagMapLast)
+            {
+                ++faceIndexByFaceTagIt;
+            }
+
+            if (faceIndexByFaceTagIt == faceIndexByFaceTagMapLast && faceIndexByFaceTagIt->first != *faceTagIt && faceIndexByFaceTagIt->first != 0)
+            {
+                while (faceIndexByFaceTagIt->first != *faceTagIt || faceIndexByFaceTagIt->first != 0)
+                {
+                    ++faceIndexByFaceTagIt;
+                }
+            }
+
+            if (faceIndexByFaceTagIt->first == 0)
+            {
+                faceIndexByFaceTagIt->first = *faceTagIt;
+                faceIndexByFaceTagIt->second = iFace;
+            }
+            else
+            {
+                *interiorFaceIndexIt = faceIndexByFaceTagIt->second;
+                ++interiorFaceIndexIt;
+                *interiorFaceIndexIt = iFace;
+                ++interiorFaceIndexIt;
+
+                interiorFaceNodeIt = std::copy_n(tetrahedronsFacesNodesTags + faceIndexByFaceTagIt->second * constants::triangle::N_NODES, constants::triangle::N_NODES, interiorFaceNodeIt);
+                ++interiorFacesCount;
+            }
+            ++faceTagIt;
+        }
+    }
+
+    int interiorFacesEntityTag = GMSHProxy::model::addDescreteEntity2D();
+    GMSHProxy::model::mesh::addTriangles(interiorFacesEntityTag, interiorFacesNodes, interiorFacesCount * constants::triangle::N_NODES);
+    delete[] interiorFacesNodes;
+
+    interiorFacesAdjuesmentsSet.elementIndexes = interiorFacesIndexes;
+    interiorFacesAdjuesmentsSet.nCrossElements = interiorFacesCount;
+
+    double (*interiorFacesAdjusments)[ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS] = new double[interiorFacesCount][ElementDGCalculator<Basis>::N_LOCAL_MATRIX_ELEMENTS];
+    interiorFacesAdjuesmentsSet.bilinear = (double*)interiorFacesAdjusments;
+
+    computeInteriorFacesAdjusments(interiorFacesEntityTag,
+                                   interiorFacesIndexes,
+                                   interiorFacesCount,
+                                   tetrahedronsFacesNodesTags,
+                                   volume.materialPhasePtr->thermalConductivity,
+                                   penalty,
+                                   localJacobianMatrixes,
+                                   memoryBuffer,
+                                   bilinearElementsAdjusments,
+                                   interiorFacesAdjusments);
+
+    GMSHProxy::model::remove2DEntity(interiorFacesEntityTag);
+
+    const Boundary* boundaryIt = volume.boundaries;
+    for (size_t j = 0; j < volume.nBoundaries; ++j)
+    {
+        if (boundaryIt->isShared)
+        {
+            switch (boundaryIt->condition->type)
+            {
+            case Boundary::Condition::Type::CONFORM_INTERFACE:
+            case Boundary::Condition::Type::DIRICHLET_FUNCTION:
+            {
+                SharedBoundary::MeshBuffer* sharedBoundaryMeshBufferPtr = sharedBoundariesMeshBuffers + boundaryIt->index;
+                size_t* boundaryFaceTagIt = sharedBoundaryMeshBufferPtr->facesTags;
+                size_t nBoundaryFaces = sharedBoundaryMeshBufferPtr->nFaces;
+
+                uint8_t sideMeshBufferLocalindex = sharedBoundaryMeshBufferPtr->sidesMeshBuffers[0].indexes == nullptr ? 0 : 1;
+                Boundary::MeshBuffer* sideMeshBufferPtr = sharedBoundaryMeshBufferPtr->sidesMeshBuffers + sideMeshBufferLocalindex;
+
+                size_t* indexIt = new size_t[nBoundaryFaces];
+                size_t* facesNodesTagIt = new size_t[nBoundaryFaces * constants::triangle::N_NODES];
+                double (*elementsLocalJacobianIt)[LocalCoordinates3D::COUNT * Coordinates::COUNT] = new double[nBoundaryFaces][LocalCoordinates3D::COUNT * Coordinates::COUNT];
+
+                sideMeshBufferPtr->indexes = indexIt;
+                sideMeshBufferPtr->facesNodesTags = facesNodesTagIt;
+                sideMeshBufferPtr->elementsLocalJacobians = elementsLocalJacobianIt;
+
+                for (size_t i = 0; i < nBoundaryFaces; ++i)
+                {
+                    std::pair<size_t, size_t>* faceIndexByFaceTagIt = faceIndexByFaceTagMap + *boundaryFaceTagIt % nTetrahedronsFaces;
+                    
+                    while (faceIndexByFaceTagIt->first != *boundaryFaceTagIt || faceIndexByFaceTagIt != faceIndexByFaceTagMapLast)
+                    {
+                        ++faceIndexByFaceTagIt;
+                    }
+
+                    if (faceIndexByFaceTagIt == faceIndexByFaceTagMapLast && faceIndexByFaceTagIt->first != *boundaryFaceTagIt)
+                    {
+                        faceIndexByFaceTagIt = faceIndexByFaceTagMap;
+                        while (faceIndexByFaceTagIt->first != *boundaryFaceTagIt)
+                        {
+                            ++faceIndexByFaceTagIt;
+                        }
+                    }
+
+                    *indexIt = faceIndexByFaceTagIt->second;
+                    size_t elementIndex = *indexIt >> 2;
+
+                    facesNodesTagIt = std::copy_n(tetrahedronsFacesNodesTags + faceIndexByFaceTagIt->second * constants::triangle::N_NODES, constants::triangle::N_NODES, facesNodesTagIt);
+                    std::copy_n(localJacobianMatrixes[elementIndex], LocalCoordinates3D::COUNT* Coordinates::COUNT, *elementsLocalJacobianIt);
+                    ++elementsLocalJacobianIt;
+
+                    ++boundaryFaceTagIt;
+                }
+
+                if (sideMeshBufferLocalindex == 0)
+                {
+                    sideMeshBufferPtr->isCoorientedWithTriagles = DTGeometryKernel::isTrianglesCooriented(sideMeshBufferPtr->facesNodesTags, sharedBoundaryMeshBufferPtr->ConditionRelatedData.firstTriangleNodesTags);
+                }
+                else
+                {
+                    sideMeshBufferPtr->isCoorientedWithTriagles = !sharedBoundaryMeshBufferPtr->sidesMeshBuffers[0].isCoorientedWithTriagles;
+                }
+
+                break;
+            }
+
+            case Boundary::Condition::Type::STEFAN:
+            case Boundary::Condition::Type::DIRICHLET_VALUE:
+            {
+                SharedBoundary::MeshBuffer* sharedBoundaryMeshBufferPtr = sharedBoundariesMeshBuffers + boundaryIt->index;
+                size_t* boundaryFaceTagIt = sharedBoundaryMeshBufferPtr->facesTags;
+                size_t nBoundaryFaces = sharedBoundaryMeshBufferPtr->nFaces;
+
+                uint8_t sideMeshBufferLocalindex = sharedBoundaryMeshBufferPtr->sidesMeshBuffers[0].indexes == nullptr ? 0 : 1;
+                Boundary::MeshBuffer* sideMeshBufferPtr = sharedBoundaryMeshBufferPtr->sidesMeshBuffers + sideMeshBufferLocalindex;
+
+                size_t* indexIt = new size_t[nBoundaryFaces];
+                double (*elementsLocalJacobianIt)[LocalCoordinates3D::COUNT * Coordinates::COUNT] = new double[nBoundaryFaces][LocalCoordinates3D::COUNT * Coordinates::COUNT];
+
+                sideMeshBufferPtr->indexes = indexIt;
+                sideMeshBufferPtr->elementsLocalJacobians = elementsLocalJacobianIt;
+
+                for (size_t i = 0; i < nBoundaryFaces; ++i)
+                {
+                    std::pair<size_t, size_t>* faceIndexByFaceTagIt = faceIndexByFaceTagMap + *boundaryFaceTagIt % nTetrahedronsFaces;
+
+                    while (faceIndexByFaceTagIt->first != *boundaryFaceTagIt || faceIndexByFaceTagIt->first != 0 || faceIndexByFaceTagIt != faceIndexByFaceTagMapLast)
+                    {
+                        ++faceIndexByFaceTagIt;
+                    }
+
+                    if (faceIndexByFaceTagIt == faceIndexByFaceTagMapLast && faceIndexByFaceTagIt->first != *boundaryFaceTagIt && faceIndexByFaceTagIt->first != 0)
+                    {
+                        while (faceIndexByFaceTagIt->first != *boundaryFaceTagIt || faceIndexByFaceTagIt->first != 0)
+                        {
+                            ++faceIndexByFaceTagIt;
+                        }
+                    }
+
+                    *indexIt = faceIndexByFaceTagIt->second;
+                    size_t elementIndex = *indexIt >> 2;
+
+                    std::copy_n(localJacobianMatrixes[elementIndex], LocalCoordinates3D::COUNT * Coordinates::COUNT, *elementsLocalJacobianIt);
+                    ++elementsLocalJacobianIt;
+
+                    ++boundaryFaceTagIt;
+                }
+
+                if (sideMeshBufferLocalindex == 0)
+                {
+                    sideMeshBufferPtr->isCoorientedWithTriagles = DTGeometryKernel::isTrianglesCooriented(tetrahedronsFacesNodesTags + *sideMeshBufferPtr->indexes* constants::triangle::N_NODES,
+                        sharedBoundaryMeshBufferPtr->ConditionRelatedData.firstTriangleNodesTags);
+                }
+                else
+                {
+                    sideMeshBufferPtr->isCoorientedWithTriagles = !sharedBoundaryMeshBufferPtr->sidesMeshBuffers[0].isCoorientedWithTriagles;
+                }
+
+                break;
+            }
+
+            case Boundary::Condition::Type::NEWMAN_FUNCTION:
+            {
+                SharedBoundary::MeshBuffer* sharedBoundaryMeshBufferPtr = sharedBoundariesMeshBuffers + boundaryIt->index;
+                size_t* boundaryFaceTagIt = sharedBoundaryMeshBufferPtr->facesTags;
+                size_t nBoundaryFaces = sharedBoundaryMeshBufferPtr->nFaces;
+
+                Boundary::MeshBuffer* sideMeshBufferPtr = sharedBoundaryMeshBufferPtr->sidesMeshBuffers[0].indexes == nullptr ? sharedBoundaryMeshBufferPtr->sidesMeshBuffers : sharedBoundaryMeshBufferPtr->sidesMeshBuffers + 1;
+
+                size_t* indexIt = new size_t[nBoundaryFaces];
+                size_t* facesNodesTagIt = new size_t[nBoundaryFaces * constants::triangle::N_NODES];
+
+                sideMeshBufferPtr->indexes = indexIt;
+                sideMeshBufferPtr->facesNodesTags = facesNodesTagIt;
+
+                for (size_t i = 0; i < nBoundaryFaces; ++i)
+                {
+                    std::pair<size_t, size_t>* faceIndexByFaceTagIt = faceIndexByFaceTagMap + *boundaryFaceTagIt % nTetrahedronsFaces;
+
+                    while (faceIndexByFaceTagIt->first != *boundaryFaceTagIt || faceIndexByFaceTagIt->first != 0 || faceIndexByFaceTagIt != faceIndexByFaceTagMapLast)
+                    {
+                        ++faceIndexByFaceTagIt;
+                    }
+
+                    if (faceIndexByFaceTagIt == faceIndexByFaceTagMapLast && faceIndexByFaceTagIt->first != *boundaryFaceTagIt && faceIndexByFaceTagIt->first != 0)
+                    {
+                        while (faceIndexByFaceTagIt->first != *boundaryFaceTagIt || faceIndexByFaceTagIt->first != 0)
+                        {
+                            ++faceIndexByFaceTagIt;
+                        }
+                    }
+
+                    *indexIt = faceIndexByFaceTagIt->second;
+                    size_t elementIndex = *indexIt >> 2;
+
+                    facesNodesTagIt = std::copy_n(tetrahedronsFacesNodesTags + faceIndexByFaceTagIt->second * constants::triangle::N_NODES, constants::triangle::N_NODES, facesNodesTagIt);
+                    ++boundaryFaceTagIt;
+                }
+                break;
+            }
+
+            case Boundary::Condition::Type::NEWMAN_VALUE:
+            {
+                SharedBoundary::MeshBuffer* sharedBoundaryMeshBufferPtr = sharedBoundariesMeshBuffers + boundaryIt->index;
+                size_t* boundaryFaceTagIt = sharedBoundaryMeshBufferPtr->facesTags;
+                size_t nBoundaryFaces = sharedBoundaryMeshBufferPtr->nFaces;
+
+                Boundary::MeshBuffer* sideMeshBufferPtr = sharedBoundaryMeshBufferPtr->sidesMeshBuffers[0].indexes == nullptr ? sharedBoundaryMeshBufferPtr->sidesMeshBuffers : sharedBoundaryMeshBufferPtr->sidesMeshBuffers + 1;
+
+                size_t* indexIt = new size_t[nBoundaryFaces];
+
+                sideMeshBufferPtr->indexes = indexIt;
+
+                for (size_t i = 0; i < nBoundaryFaces; ++i)
+                {
+                    std::pair<size_t, size_t>* faceIndexByFaceTagIt = faceIndexByFaceTagMap + *boundaryFaceTagIt % nTetrahedronsFaces;
+
+                    while (faceIndexByFaceTagIt->first != *boundaryFaceTagIt || faceIndexByFaceTagIt->first != 0 || faceIndexByFaceTagIt != faceIndexByFaceTagMapLast)
+                    {
+                        ++faceIndexByFaceTagIt;
+                    }
+
+                    if (faceIndexByFaceTagIt == faceIndexByFaceTagMapLast && faceIndexByFaceTagIt->first != *boundaryFaceTagIt && faceIndexByFaceTagIt->first != 0)
+                    {
+                        while (faceIndexByFaceTagIt->first != *boundaryFaceTagIt || faceIndexByFaceTagIt->first != 0)
+                        {
+                            ++faceIndexByFaceTagIt;
+                        }
+                    }
+
+                    *indexIt = faceIndexByFaceTagIt->second;
+                    ++boundaryFaceTagIt;
+                }
+                break;
+            }
+
+            case Boundary::Condition::Type::HOMOGENEOUS_NEWMAN:
+            {
+                break;
+            }
+            }
+        }
+        else
+        {
+            size_t* boundaryFacesTags;
+            size_t nBoundaryFaces;
+
             switch (boundaryIt->condition->type)
             {
             case Boundary::Condition::Type::DIRICHLET_FUNCTION:
@@ -1004,6 +1818,7 @@ void computeVolumeAdjusments(const Volume& volume,
 
             case Boundary::Condition::Type::DIRICHLET_VALUE:
             {
+
                 break;
             }
 
@@ -1033,11 +1848,9 @@ void computeVolumeAdjusments(const Volume& volume,
             }
 
             }
-
-            delete[] boundariesFacesSets->elementIndexes;
-            delete[] boundariesFacesSets->localindexes;
-            delete[] boundariesFacesSets->nodesTags;
         }
+        
+    }
 }
 
 /*

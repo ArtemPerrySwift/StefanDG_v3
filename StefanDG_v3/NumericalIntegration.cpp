@@ -81,6 +81,21 @@ namespace NumericalIntegration
 			return sum * weight;
 		}
 
+		void Gauss<2>::changeValuesOrder(double values[], const uint8_t nFunctions, const uint8_t nodesChangins[constants::triangle::N_NODES])
+		{
+			double outValues[constants::triangle::N_NODES];
+			for (uint8_t i = 0; i < nFunctions; ++i)
+			{
+				changeValuesOrder(values, nodesChangins, outValues);
+
+				*values = outValues[0];
+				*(++values) = outValues[1];
+				*(++values) = outValues[2];
+				++values;
+			}
+
+		}
+
 		void Gauss<2>::changeValuesOrder(double values[nSteps], const uint8_t nodesChangins[constants::triangle::N_NODES])
 		{
 			double outValues[constants::triangle::N_NODES];
@@ -97,6 +112,28 @@ namespace NumericalIntegration
 			outValues[*nodesChangins] = *values;
 			outValues[*(++nodesChangins)] = *(++values);
 			outValues[*(++nodesChangins)] = *(++values);
+		}
+
+		void Gauss<2>::changeValuesOrder(const double values[nSteps], const uint8_t nodesChangins, double outValues[nSteps])
+		{
+			outValues[nodesChangins & 0b11] = *values;
+			outValues[(nodesChangins >> 2) & 0b11] = *(++values);
+			outValues[nodesChangins >> 4] = *(++values);
+		}
+
+		void Gauss<2>::changeValuesOrder(double values[], const uint8_t nFunctions, const uint8_t nodesChangins)
+		{
+			double outValues[constants::triangle::N_NODES];
+			for (uint8_t i = 0; i < nFunctions; ++i)
+			{
+				changeValuesOrder(values, nodesChangins, outValues);
+
+				*values = outValues[0];
+				*(++values) = outValues[1];
+				*(++values) = outValues[2];
+				++values;
+			}
+
 		}
 	}
 }

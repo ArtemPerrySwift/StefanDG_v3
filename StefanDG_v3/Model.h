@@ -2,7 +2,7 @@
 #include "MaterialPhase.h"
 #include "Volume.h"
 #include "Boundary.h"
-#include "ConformInterface.h"
+#include "SharedBoundary.h"
 #include "NonconformInterface.h"
 
 #include <utility>
@@ -14,7 +14,7 @@ public:
 	const Volume* volumes;
 	const Boundary* volumesBoundaries;
 	const Boundary::Condition* conditions;
-	const ConformInterface* conformInterfaces;
+	const SharedBoundary* sharedBoundaries;
 	const NonconformInterface* nonconformInterfaces;
 
 	unsigned nMaterialPhases;

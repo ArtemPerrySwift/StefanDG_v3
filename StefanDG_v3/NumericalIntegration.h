@@ -64,8 +64,13 @@ namespace NumericalIntegration
 			static double integrate(const double values[nSteps]);
 			static double integrateProduct(const double multipliers1[nSteps], const double multipliers2[nSteps]);
 
+			static void changeValuesOrder(double values[], const uint8_t nFunctions, const uint8_t nodesChangins[constants::triangle::N_NODES]);
 			static void changeValuesOrder(double values[nSteps], const uint8_t nodesChangins[constants::triangle::N_NODES]);
 			static void changeValuesOrder(const double values[nSteps], const uint8_t nodesChangins[constants::triangle::N_NODES], double outValues[nSteps]);
+
+			static void changeValuesOrder(const double values[nSteps], const uint8_t nodesChangins, double outValues[nSteps]);
+			static void changeValuesOrder(double values[], const uint8_t nFunctions, const uint8_t nodesChangins);
+
 		private:
 			Gauss<2>() = default;
 			static const double coord1;
